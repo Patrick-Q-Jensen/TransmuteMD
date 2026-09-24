@@ -50,6 +50,7 @@ transmutemd/
 |-- docs/
 |   |-- architecture.md          # Design, boundaries, and data flow
 |   |-- cli-contract.md          # Initial user-visible CLI behavior
+|   |-- decisions/               # Architecture Decision Records
 |   `-- implementation-plan.md   # Living roadmap and progress record
 |-- testdata/
 |   `-- pdf/                     # Representative PDF fixtures
@@ -64,6 +65,7 @@ required.
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [Architecture decisions](docs/decisions/README.md)
 - [Initial CLI contract](docs/cli-contract.md)
 - [Implementation plan](docs/implementation-plan.md)
 

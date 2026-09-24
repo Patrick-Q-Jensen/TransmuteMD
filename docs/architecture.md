@@ -256,12 +256,8 @@ become a hidden runtime dependency of the default portable release.
 
 Material decisions should be captured as short Architecture Decision Records
 under `docs/decisions/`. Each record should state the context, decision,
-consequences, and status. Likely first records are:
-
-- selection of Go;
-- selection of embedded PDFium WebAssembly;
-- separation of layout extraction from semantic analysis;
-- supported release platforms and compatibility policy.
+consequences, and status. The record index and authoring process are documented
+in [`docs/decisions/README.md`](decisions/README.md).
 
 This document describes the current architecture. Decision records preserve
 why it changed.
