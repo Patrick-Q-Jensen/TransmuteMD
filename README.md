@@ -1,0 +1,90 @@
+# TransmuteMD
+
+TransmuteMD is a portable command-line tool for converting documents to
+Markdown. The first supported input format will be PDF.
+
+The initial implementation will use Go and PDFium through the
+[`go-pdfium`](https://github.com/klippa-app/go-pdfium) WebAssembly backend.
+PDF extraction is kept behind an internal interface so a native PDFium backend
+or another Go PDF library can be introduced without changing the conversion
+pipeline.
+
+## Project status
+
+The project is in the design and setup phase. See the
+[implementation plan](docs/implementation-plan.md) for current progress and
+planned work.
+
+## Planned usage
+
+The initial command-line contract is defined, but not yet implemented:
+
+```console
+transmutemd document.pdf
+transmutemd document.pdf --output document.md
+transmutemd document.pdf --output -
+```
+
+Without `--output`, TransmuteMD creates `document.md` beside the input. It
+refuses to overwrite an existing file unless `--force` is supplied.
+
+TransmuteMD should be distributed as a single executable with no separately
+installed PDF engine or runtime.
+
+## Planned project layout
+
+```text
+transmutemd/
+|-- cmd/
+|   `-- transmutemd/             # Executable entry point
+|-- internal/
+|   |-- app/                     # Conversion use cases and orchestration
+|   |-- cli/                     # Arguments, user output, and exit codes
+|   |-- document/                # Engine-neutral layout and semantic models
+|   |-- extract/                 # Extractor contracts and implementations
+|   |   `-- pdf/
+|   |       `-- pdfium/          # PDFium adapter and backend setup
+|   |-- analyze/                 # Reading order and semantic inference
+|   `-- render/
+|       `-- markdown/            # Markdown generation
+|-- docs/
+|   |-- architecture.md          # Design, boundaries, and data flow
+|   |-- cli-contract.md          # Initial user-visible CLI behavior
+|   `-- implementation-plan.md   # Living roadmap and progress record
+|-- testdata/
+|   `-- pdf/                     # Representative PDF fixtures
+|-- go.mod
+`-- README.md
+```
+
+The directories are created when their corresponding implementation work
+begins. Packages remain under `internal` until a stable public Go API is
+required.
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Initial CLI contract](docs/cli-contract.md)
+- [Implementation plan](docs/implementation-plan.md)
+
+## Development
+
+Development currently requires Go 1.27.1 or later.
+
+```console
+go fmt ./...
+go vet ./...
+go test ./...
+```
+
+## Development principles
+
+- Keep PDF engine types inside their adapter.
+- Separate extraction, semantic analysis, and Markdown rendering.
+- Prefer deterministic output and actionable errors.
+- Test against representative real-world PDFs, not only synthetic examples.
+- Preserve the single-download user experience.
+
+## License
+
+TransmuteMD is licensed under the [MIT License](LICENSE).

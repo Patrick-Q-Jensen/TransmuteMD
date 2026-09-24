@@ -1,0 +1,21 @@
+# Build output
+/bin/
+/dist/
+/transmutemd
+/transmutemd.exe
+
+# Test and profiling output
+*.cover
+*.out
+*.prof
+
+# Local environment
+.env
+.env.*
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
