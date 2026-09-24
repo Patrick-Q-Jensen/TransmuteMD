@@ -37,6 +37,8 @@ installed PDF engine or runtime.
 transmutemd/
 |-- cmd/
 |   `-- transmutemd/             # Executable entry point
+|-- .github/
+|   `-- copilot-instructions.md  # Copilot-specific repository guidance
 |-- internal/
 |   |-- app/                     # Conversion use cases and orchestration
 |   |-- cli/                     # Arguments, user output, and exit codes
@@ -54,6 +56,7 @@ transmutemd/
 |   `-- implementation-plan.md   # Living roadmap and progress record
 |-- testdata/
 |   `-- pdf/                     # Representative PDF fixtures
+|-- AGENTS.md                    # AI development and workflow instructions
 |-- go.mod
 `-- README.md
 ```
@@ -78,6 +81,10 @@ go fmt ./...
 go vet ./...
 go test ./...
 ```
+
+AI-assisted changes follow [`AGENTS.md`](AGENTS.md). The file identifies the
+authoritative project context, architectural constraints, required checks, and
+documentation workflow.
 
 ## Development principles
 

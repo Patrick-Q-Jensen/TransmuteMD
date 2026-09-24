@@ -121,14 +121,12 @@ context and repeatable quality checks.
 - [x] Initialize the Go module.
 - [x] Add `LICENSE` after selecting the project license.
 - [x] Add `.gitignore` and `.editorconfig`.
-- [ ] Add repository-level AI instructions defining commands, architectural
+- [x] Add repository-level AI instructions defining commands, architectural
       constraints, and the requirement to update this plan.
 - [ ] Add formatting, vetting, and test commands.
 - [ ] Add a `Makefile`, `Taskfile.yml`, or small cross-platform build script
       only if plain Go commands become insufficient.
 - [x] Create initial Architecture Decision Records.
-- [ ] Add contributor guidance covering development commands and documentation
-      update expectations.
 - [ ] Add CI for formatting, tests, vetting, and builds on selected platforms.
 - [ ] Add dependency update and vulnerability scanning automation.
 - [x] Document the layered testing and PDF fixture-acquisition strategies.
@@ -209,6 +207,7 @@ user feedback and corpus results.
 - Configurable Markdown style.
 - Batch and recursive conversion.
 - A stable library API.
+- A human-focused `CONTRIBUTING.md` when external contributions are expected.
 
 ## Definition of done for each implementation task
 
@@ -230,3 +229,4 @@ A task is complete when:
 | 2026-09-24 | Added the layered testing strategy and licensed PDF fixture-acquisition policy. |
 | 2026-09-24 | Selected MIT and the initial operating systems, then defined the initial CLI contract. |
 | 2026-09-24 | Added the ADR process and records for the four foundational architecture decisions. |
+| 2026-09-24 | Added tool-neutral and Copilot-specific AI development instructions. |
