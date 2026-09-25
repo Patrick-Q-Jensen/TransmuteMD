@@ -52,6 +52,8 @@ transmutemd/
 |-- docs/
 |   |-- architecture.md          # Design, boundaries, and data flow
 |   |-- cli-contract.md          # Initial user-visible CLI behavior
+|   |-- dependency-and-notice-policy.md
+|   |                            # Dependency and distribution compliance
 |   |-- decisions/               # Architecture Decision Records
 |   `-- implementation-plan.md   # Living roadmap and progress record
 |-- testdata/
@@ -70,6 +72,7 @@ required.
 - [Architecture](docs/architecture.md)
 - [Architecture decisions](docs/decisions/README.md)
 - [Initial CLI contract](docs/cli-contract.md)
+- [Dependency and notice policy](docs/dependency-and-notice-policy.md)
 - [Implementation plan](docs/implementation-plan.md)
 
 ## Development

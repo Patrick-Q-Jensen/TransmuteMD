@@ -14,6 +14,8 @@ Read the relevant project documents before changing behavior:
 - `README.md` for project scope, layout, and development commands;
 - `docs/architecture.md` for boundaries and dependency direction;
 - `docs/cli-contract.md` for user-visible CLI behavior;
+- `docs/dependency-and-notice-policy.md` before dependency or distribution
+  changes;
 - `docs/implementation-plan.md` for current status and planned work;
 - `docs/decisions/` for accepted architectural reasoning.
 
@@ -71,6 +73,10 @@ Before adding or updating a dependency:
 4. verify that it does not introduce an unintended end-user runtime
    dependency;
 5. document material architectural or release consequences.
+
+Follow the review, inventory, license, and notice requirements in
+`docs/dependency-and-notice-policy.md`. A dependency with copyleft, custom, or
+unclear terms requires explicit owner approval and an ADR.
 
 Pin dependencies through Go modules and commit both `go.mod` and `go.sum`
 changes together.
@@ -139,4 +145,3 @@ Before reporting a task complete:
 3. inspect the final diff for unrelated or generated changes;
 4. update material plan, architecture, ADR, and user documentation;
 5. state any incomplete or unverified work plainly.
-

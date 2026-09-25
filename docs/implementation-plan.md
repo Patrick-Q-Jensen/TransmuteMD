@@ -32,12 +32,14 @@ Architecture Decision Record rather than placing detailed design notes here.
 | Initial CLI | Direct, single-file command defined in `docs/cli-contract.md` | Accepted |
 | Encrypted PDFs | Unsupported initially; return a conversion error without prompting | Accepted |
 | Failed or textless conversion | Do not create or replace output | Accepted |
+| Dependency licensing | Permissive by default; explicit approval and ADR for exceptions | Accepted |
+| Dependency storage | Go modules without vendoring by default | Accepted |
+| Internal distribution | Self-contained executable plus license and notice files in an archive | Accepted |
 
 ## Open decisions
 
 - [ ] Select the first supported CPU architectures.
 - [ ] Choose a versioning and release strategy.
-- [ ] Confirm dependency licenses and required release notices.
 
 ## Testing strategy
 
@@ -128,7 +130,7 @@ context and repeatable quality checks.
       only if plain Go commands become insufficient.
 - [x] Create initial Architecture Decision Records.
 - [ ] Add CI for formatting, tests, vetting, and builds on selected platforms.
-- [ ] Add dependency update and vulnerability scanning automation.
+- [x] Define the dependency review, license, and notice policy.
 - [x] Document the layered testing and PDF fixture-acquisition strategies.
 - [ ] Create the PDF fixture directories, provenance manifest, and validation
       helper when adding the first fixture.
@@ -143,6 +145,8 @@ Markdown text using the embedded PDFium WebAssembly backend.
 - [ ] Define engine-neutral layout and semantic document models.
 - [ ] Define extractor, analyzer, and renderer contracts.
 - [ ] Integrate `go-pdfium` WebAssembly with explicit lifecycle management.
+- [ ] Audit the pinned `go-pdfium` module and embedded PDFium WASM, then add
+      the dependency inventory, license texts, and third-party notices.
 - [ ] Extract page text and geometry into the neutral layout model.
 - [ ] Implement basic reading order and paragraph grouping.
 - [ ] Implement plain paragraphs in the Markdown renderer.
@@ -183,7 +187,7 @@ adapter can be replaced without redesigning the pipeline.
 - [ ] Document unsupported PDF features and expected degradation.
 - [ ] Benchmark representative documents for time and peak memory.
 
-## Phase 4: Portable releases
+## Phase 4: Public releases
 
 **Outcome:** users can download a release artifact and run it without
 installing dependencies.
@@ -192,7 +196,10 @@ installing dependencies.
 - [ ] Verify each artifact in a clean environment.
 - [ ] Add version information to the CLI.
 - [ ] Generate checksums and a software bill of materials.
-- [ ] Include license and third-party notices.
+- [ ] Verify license and third-party notice bundles against each final
+      artifact.
+- [ ] Add scheduled dependency updates and automated vulnerability scanning
+      before public releases.
 - [ ] Automate tagged GitHub releases.
 - [ ] Add installation and upgrade instructions to the README.
 
@@ -230,3 +237,4 @@ A task is complete when:
 | 2026-09-24 | Selected MIT and the initial operating systems, then defined the initial CLI contract. |
 | 2026-09-24 | Added the ADR process and records for the four foundational architecture decisions. |
 | 2026-09-24 | Added tool-neutral and Copilot-specific AI development instructions. |
+| 2026-09-24 | Defined dependency acceptance, embedded-component auditing, and internal notice packaging. |

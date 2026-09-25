@@ -249,6 +249,11 @@ selected and verified in the implementation plan. Each target receives one
 executable containing the PDFium WebAssembly module. Build metadata and
 third-party notices should accompany releases where required.
 
+Dependency selection, embedded-component auditing, and notice packaging follow
+the [dependency and notice policy](dependency-and-notice-policy.md). The same
+notice bundle is required for internally shared binaries even while formal
+release automation is deferred.
+
 Native PDFium may later be offered as a distinct build or backend. It must not
 become a hidden runtime dependency of the default portable release.
 
