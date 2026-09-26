@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "distributionStatus": "blocked-pending-embedded-pdfium-audit",
+  "components": [
+    {
+      "name": "go-pdfium",
+      "relationship": "direct",
+      "purpose": "Go bindings and WebAssembly adapter for PDFium",
+      "version": "v1.21.0",
+      "source": "https://github.com/klippa-app/go-pdfium",
+      "sourceCommit": "33eb7a1a810f0e7dd48a4f3c438b5f1d811bd127",
+      "moduleSum": "h1:jfnD7yOYhJMyc3dtI0sY7OH4tJSbltMfD1T4VXxv24c=",
+      "license": "MIT",
+      "licenseFiles": [
+        "third_party/licenses/go-pdfium-LICENSE.txt"
+      ],
+      "auditStatus": "reviewed"
+    },
+    {
+      "name": "wazero",
+      "relationship": "direct",
+      "purpose": "Pure-Go WebAssembly runtime used by go-pdfium",
+      "version": "v1.12.0",
+      "source": "https://github.com/tetratelabs/wazero",
+      "sourceCommit": "2ab480b55fa408d6b35df97fe32a60d08bd6e201",
+      "moduleSum": "h1:DuWcpNu/FzgEXgGBDp8J1Spc+CWOvvtvVyjKlaZopYU=",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "third_party/licenses/wazero-LICENSE.txt",
+        "third_party/licenses/wazero-NOTICE.txt"
+      ],
+      "auditStatus": "reviewed"
+    },
+    {
+      "name": "google/uuid",
+      "relationship": "transitive",
+      "purpose": "Pool and instance identifiers used by go-pdfium",
+      "version": "v1.6.0",
+      "source": "https://github.com/google/uuid",
+      "sourceCommit": "0f11ee6918f41a04c201eceeadf612a377bc7fbc",
+      "moduleSum": "h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=",
+      "license": "BSD-3-Clause",
+      "licenseFiles": [
+        "third_party/licenses/google-uuid-LICENSE.txt"
+      ],
+      "auditStatus": "reviewed"
+    },
+    {
+      "name": "go-commons-pool/v2",
+      "relationship": "transitive",
+      "purpose": "PDFium WebAssembly worker pooling",
+      "version": "v2.1.2",
+      "source": "https://github.com/jolestar/go-commons-pool",
+      "moduleSum": "h1:E+XGo58F23t7HtZiC/W6jzO2Ux2IccSH/yx4nD+J1CM=",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "third_party/licenses/go-commons-pool-LICENSE.txt"
+      ],
+      "auditStatus": "reviewed"
+    },
+    {
+      "name": "golang.org/x/sys",
+      "relationship": "transitive",
+      "purpose": "Platform support used by the WebAssembly runtime",
+      "version": "v0.48.0",
+      "source": "https://go.googlesource.com/sys",
+      "sourceCommit": "613e2570718ecde85c04e69ebd5585c3881c442c",
+      "moduleSum": "h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=",
+      "license": "BSD-3-Clause",
+      "licenseFiles": [
+        "third_party/licenses/golang-x-sys-LICENSE.txt"
+      ],
+      "auditStatus": "reviewed"
+    },
+    {
+      "name": "golang.org/x/text",
+      "relationship": "transitive",
+      "purpose": "Text encoding support used by go-pdfium",
+      "version": "v0.42.0",
+      "source": "https://go.googlesource.com/text",
+      "sourceCommit": "fafe4a06967e06550e69ee42787d9902845d2a3f",
+      "moduleSum": "h1:JbOZXgfeCPU9gacVtYliJqOhD+zhrEqK4LfdpmlUZqI=",
+      "license": "BSD-3-Clause",
+      "licenseFiles": [
+        "third_party/licenses/golang-x-text-LICENSE.txt"
+      ],
+      "auditStatus": "reviewed"
+    },
+    {
+      "name": "pdfium.wasm",
+      "relationship": "embedded",
+      "purpose": "PDF parsing and text extraction engine",
+      "version": "bundled with go-pdfium v1.21.0",
+      "source": "https://github.com/jerbob92/pdfium-binaries/tree/wasm-standalone",
+      "goPdfiumArtifactCommit": "7213682841170f421d55d07e76b220bed83d060d",
+      "artifactPath": "github.com/klippa-app/go-pdfium/internal/pdfium_wasm/pdfium.wasm",
+      "artifactSHA256": "d1dbc423597c0c65cd932cd1bb6a452fdc457a1f3b5009d3d5ec4ca768c47f53",
+      "license": "NOASSERTION",
+      "licenseFiles": [],
+      "auditStatus": "blocked",
+      "notes": "The current artifact entered go-pdfium in commit 7213682841170f421d55d07e76b220bed83d060d. go-pdfium documents the builder patch state at e33a1ef and says an earlier module was rebuilt later on 2026-08-23, but it does not identify the exact PDFium revision, builder commit, Emscripten version, or complete incorporated third-party notice set for this artifact. Do not distribute artifacts until this is resolved."
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+TransmuteMD third-party notices
+================================
+
+STATUS: PRELIMINARY - NOT READY FOR BINARY DISTRIBUTION
+
+The Go dependency notices below have been reviewed. The embedded pdfium.wasm
+artifact audit is incomplete: its SHA-256 digest is recorded, but its exact
+PDFium source revision, build-tool versions, and complete incorporated
+third-party license set have not yet been established. Do not distribute a
+TransmuteMD binary until third_party/dependencies.json reports a distribution-
+ready status and this notice includes the completed embedded-component audit.
+
+go-pdfium v1.21.0
+-----------------
+Copyright (c) 2022 Klippa App BV
+License: MIT
+Source: https://github.com/klippa-app/go-pdfium
+License file: third_party/licenses/go-pdfium-LICENSE.txt
+
+wazero v1.12.0
+--------------
+Copyright 2020-2023 wazero authors
+License: Apache-2.0
+Source: https://github.com/tetratelabs/wazero
+License and notice files:
+  third_party/licenses/wazero-LICENSE.txt
+  third_party/licenses/wazero-NOTICE.txt
+
+google/uuid v1.6.0
+------------------
+Copyright (c) 2009,2014 Google Inc. All rights reserved.
+License: BSD-3-Clause
+Source: https://github.com/google/uuid
+License file: third_party/licenses/google-uuid-LICENSE.txt
+
+go-commons-pool/v2 v2.1.2
+-------------------------
+License: Apache-2.0
+Source: https://github.com/jolestar/go-commons-pool
+License file: third_party/licenses/go-commons-pool-LICENSE.txt
+
+golang.org/x/sys v0.48.0
+------------------------
+Copyright 2009 The Go Authors.
+License: BSD-3-Clause
+Source: https://go.googlesource.com/sys
+License file: third_party/licenses/golang-x-sys-LICENSE.txt
+
+golang.org/x/text v0.42.0
+-------------------------
+Copyright 2009 The Go Authors.
+License: BSD-3-Clause
+Source: https://go.googlesource.com/text
+License file: third_party/licenses/golang-x-text-LICENSE.txt
+
+Embedded pdfium.wasm
+--------------------
+Artifact SHA-256:
+  d1dbc423597c0c65cd932cd1bb6a452fdc457a1f3b5009d3d5ec4ca768c47f53
+
+The artifact is embedded by go-pdfium v1.21.0. Its complete notices remain
+pending as described above and in third_party/dependencies.json.

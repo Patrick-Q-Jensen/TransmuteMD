@@ -125,14 +125,14 @@ context and repeatable quality checks.
 - [x] Add `.gitignore` and `.editorconfig`.
 - [x] Add repository-level AI instructions defining commands, architectural
       constraints, and the requirement to update this plan.
-- [ ] Add formatting, vetting, and test commands.
-- [ ] Add a `Makefile`, `Taskfile.yml`, or small cross-platform build script
-      only if plain Go commands become insufficient.
+- [x] Add formatting, vetting, and test commands.
+- [x] Keep the plain Go commands while they remain sufficient; no additional
+      cross-platform build script is currently needed.
 - [x] Create initial Architecture Decision Records.
-- [ ] Add CI for formatting, tests, vetting, and builds on selected platforms.
+- [x] Add CI for formatting, tests, vetting, and builds on selected platforms.
 - [x] Define the dependency review, license, and notice policy.
 - [x] Document the layered testing and PDF fixture-acquisition strategies.
-- [ ] Create the PDF fixture directories, provenance manifest, and validation
+- [x] Create the PDF fixture directories, provenance manifest, and validation
       helper when adding the first fixture.
 
 ## Phase 1: Vertical-slice converter
@@ -141,18 +141,23 @@ context and repeatable quality checks.
 Markdown text using the embedded PDFium WebAssembly backend.
 
 - [x] Define the initial CLI contract and exit codes.
-- [ ] Create the package skeleton described in `docs/architecture.md`.
-- [ ] Define engine-neutral layout and semantic document models.
-- [ ] Define extractor, analyzer, and renderer contracts.
-- [ ] Integrate `go-pdfium` WebAssembly with explicit lifecycle management.
-- [ ] Audit the pinned `go-pdfium` module and embedded PDFium WASM, then add
-      the dependency inventory, license texts, and third-party notices.
+- [x] Create the package skeleton described in `docs/architecture.md`.
+- [x] Define engine-neutral layout and semantic document models.
+- [x] Define extractor, analyzer, and renderer contracts.
+- [x] Integrate `go-pdfium` WebAssembly with explicit lifecycle management.
+- [!] Complete the audit of pinned `go-pdfium` v1.21.0 and its embedded
+      PDFium WASM. The Go dependency inventory, license texts, notices, and
+      WASM digest are recorded, but binary distribution remains blocked
+      because upstream does not identify the exact PDFium revision, build
+      tool versions, or complete incorporated third-party notice set.
 - [ ] Extract page text and geometry into the neutral layout model.
 - [ ] Implement basic reading order and paragraph grouping.
 - [ ] Implement plain paragraphs in the Markdown renderer.
 - [ ] Support writing to stdout and to a specified output file.
 - [ ] Return actionable errors for invalid, encrypted, and textless input.
-- [ ] Add one licensed simple-PDF fixture and an end-to-end golden test.
+- [~] Add one licensed simple-PDF fixture and an end-to-end golden test. The
+      generated fixture and provenance validation are complete; the golden
+      conversion test awaits the vertical slice.
 - [ ] Build and manually exercise one self-contained executable.
 
 ## Phase 2: Useful document structure
@@ -238,3 +243,9 @@ A task is complete when:
 | 2026-09-24 | Added the ADR process and records for the four foundational architecture decisions. |
 | 2026-09-24 | Added tool-neutral and Copilot-specific AI development instructions. |
 | 2026-09-24 | Defined dependency acceptance, embedded-component auditing, and internal notice packaging. |
+| 2026-09-25 | Confirmed the plain Go formatting, vetting, and test commands as the default local quality gate. |
+| 2026-09-25 | Added the package skeleton and cross-platform CI for formatting, vetting, tests, and builds. |
+| 2026-09-26 | Defined validated engine-neutral physical layout and semantic paragraph models. |
+| 2026-09-26 | Defined context-aware extraction, analysis, and rendering contracts with explicit ownership and validation rules. |
+| 2026-09-26 | Integrated the embedded PDFium WebAssembly runtime with isolated filesystem access, cancellation, deterministic cleanup, and a generated smoke-test fixture. |
+| 2026-09-26 | Added the initial dependency inventory and notice bundle; blocked binary distribution pending the complete embedded PDFium provenance and license audit. |

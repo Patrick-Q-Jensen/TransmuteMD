@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "path": "generated/simple.pdf",
+      "sha256": "f4267480c6013d9a15631a281f94630e7cb143c67c0b970fa367b17c9674e97a",
+      "purpose": "PDFium WebAssembly lifecycle and simple born-digital text smoke tests",
+      "features": [
+        "single page",
+        "embedded text",
+        "standard Type 1 font"
+      ],
+      "origin": "self-authored generated fixture",
+      "generationSource": "generated/generate.go",
+      "generationInstructions": "go run ./testdata/pdf/generated/generate.go -output ./testdata/pdf/generated/simple.pdf",
+      "author": "TransmuteMD contributors",
+      "copyright": "Copyright (c) 2026 TransmuteMD contributors",
+      "license": "MIT",
+      "expectedPageCount": 1,
+      "expectedText": "TransmuteMD PDFium smoke test"
+    }
+  ]
+}

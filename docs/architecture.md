@@ -128,7 +128,9 @@ Dependencies point inward toward contracts and models:
 - `internal/app` coordinates extraction, analysis, and rendering.
 - `internal/extract` defines extraction contracts.
 - `internal/extract/pdf/pdfium` implements the contracts using `go-pdfium`.
-- `internal/analyze` interprets layout without importing an extraction engine.
+- `internal/analyze` defines the analysis contract and interprets layout
+  without importing an extraction engine.
+- `internal/render` defines the rendering contract.
 - `internal/render/markdown` renders semantic content without importing PDF
   packages.
 - `internal/document` contains engine-neutral data structures shared by the
@@ -139,8 +141,8 @@ Neither `internal/document`, `internal/analyze`, nor
 
 ## 7. Core contracts
 
-The exact API will be validated during implementation. The intended boundary
-is:
+Every pipeline stage accepts a context, returns errors rather than terminating
+the process, and communicates through engine-neutral document models.
 
 ```go
 type Source interface {
@@ -153,13 +155,45 @@ type Extractor interface {
 	Extract(
 		ctx context.Context,
 		source Source,
-		options Options,
 	) (*document.Layout, error)
+}
+
+type Analyzer interface {
+	Analyze(
+		ctx context.Context,
+		layout *document.Layout,
+	) (*document.Document, error)
+}
+
+type Renderer interface {
+	Render(
+		ctx context.Context,
+		doc *document.Document,
+		output io.Writer,
+	) error
 }
 ```
 
-The layout model should represent observed facts rather than inferred
-semantics:
+Sources remain owned by the caller and must provide immutable random access
+during extraction. Stages do not mutate their input models; callers own
+successful results. Inputs and successful results must pass their model
+validation. Implementations check cancellation at meaningful boundaries,
+release acquired resources before returning, and add operation context to
+errors.
+
+Renderers own neither the semantic document nor the writer and do not close
+the writer. Because a renderer may write before encountering an error,
+application orchestration renders into a private buffer before committing
+bytes to a file or standard output. This preserves the CLI's transactional
+output contract without forcing every renderer to buffer independently.
+
+Stage-specific option types will be introduced only when a concrete behavior
+requires them.
+
+The layout model represents observed facts rather than inferred semantics.
+Page dimensions and coordinates use PDF points (1/72 inch) in a top-left
+coordinate system: X increases rightward and Y increases downward. Extractor
+adapters normalize their engine coordinates to this convention.
 
 ```go
 type Layout struct {
@@ -167,27 +201,28 @@ type Layout struct {
 }
 
 type Page struct {
-	Number int
-	Width  float64
-	Height float64
-	Items  []TextItem
+	Number   int
+	Width    float64
+	Height   float64
+	TextRuns []TextRun
 }
 
-type TextItem struct {
-	Text     string
-	Bounds   Rectangle
-	FontName string
-	FontSize float64
-	Bold     bool
-	Italic   bool
-	Rotation float64
+type TextRun struct {
+	Text            string
+	Bounds          Rectangle
+	Style           TextStyle
+	RotationDegrees float64
 }
 ```
 
-Before these types are implemented, the PDFium API must be examined to choose
-coordinate conventions and the appropriate extraction granularity. The model
-should avoid fields that only one engine can populate unless they are optional
-capabilities.
+Text runs are consecutive text sharing placement and style evidence. They
+retain extraction order; the analyzer, rather than the extractor, determines
+reading order. Style fields use zero values when unavailable so engines are
+not required to expose backend-specific font data.
+
+The semantic model is an ordered set of blocks owned by `internal/document`.
+The initial block is a plain paragraph. Later heading and list work will add
+block types without exposing extraction details to renderers.
 
 ## 8. Engine selection and lifecycle
 
@@ -205,8 +240,23 @@ The adapter is responsible for:
 - wrapping errors with operation and page context;
 - detecting password-protected and likely image-only documents where possible.
 
-Backend lifecycle should be process-scoped when safe, while document resources
-must be released after every conversion.
+The `go-pdfium` WebAssembly pool is process-scoped and limited to one worker
+for the initial single-document CLI. Each conversion borrows one instance.
+Pages and the document close before the instance, and the instance closes
+before the process-scoped pool. Cleanup errors are preserved alongside the
+primary operation error.
+
+The adapter supplies an empty wazero filesystem configuration rather than
+accepting `go-pdfium`'s default host-filesystem mount. Input is provided
+through `extract.Source`, adapted from `io.ReaderAt` to `io.ReadSeeker` with an
+`io.SectionReader`; PDFium therefore needs neither a host path nor an
+application-level copy of the complete file.
+
+Wazero is configured to terminate active WebAssembly execution when its
+worker context is cancelled. Acquiring an instance uses the conversion
+context, and cancellation kills that instance rather than returning it for
+reuse. PDFium and wazero output streams are discarded so only the CLI writes
+user-visible diagnostics.
 
 ## 9. Errors and diagnostics
 
@@ -229,10 +279,12 @@ in the [CLI contract](cli-contract.md).
 
 ## 10. Testing strategy
 
-- **Unit tests:** semantic analysis, coordinate normalization, Markdown
-  escaping, and command-line validation.
+- **Unit tests:** contracts, model validation, semantic analysis, coordinate
+  normalization, Markdown escaping, and command-line validation.
 - **Contract tests:** run every extractor implementation against common
   expectations.
+- **Backend smoke tests:** initialize the embedded PDFium WebAssembly module,
+  open a generated licensed fixture, inspect it, and verify cleanup.
 - **Golden tests:** compare Markdown output for stable fixture PDFs.
 - **Integration tests:** execute the complete CLI with temporary input and
   output paths.

@@ -11,7 +11,7 @@ pipeline.
 
 ## Project status
 
-The project is in the design and setup phase. See the
+The project is in the vertical-slice implementation phase. See the
 [implementation plan](docs/implementation-plan.md) for current progress and
 planned work.
 
@@ -83,7 +83,11 @@ Development currently requires Go 1.27.1 or later.
 go fmt ./...
 go vet ./...
 go test ./...
+go run ./testdata/pdf/validate.go
 ```
+
+GitHub Actions runs formatting checks, vetting, tests, and builds on Windows,
+Linux, and macOS.
 
 AI-assisted changes follow [`AGENTS.md`](AGENTS.md). The file identifies the
 authoritative project context, architectural constraints, required checks, and
@@ -100,3 +104,9 @@ documentation workflow.
 ## License
 
 TransmuteMD is licensed under the [MIT License](LICENSE).
+
+Third-party licensing information is recorded in
+[`THIRD_PARTY_NOTICES`](THIRD_PARTY_NOTICES) and
+[`third_party/dependencies.json`](third_party/dependencies.json). Binary
+distribution remains blocked until the embedded PDFium WebAssembly audit
+identified there is complete.
