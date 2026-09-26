@@ -5,11 +5,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
-
-	"github.com/klippa-app/go-pdfium/references"
-	"github.com/klippa-app/go-pdfium/requests"
 )
 
 func TestRuntimeOpensGeneratedPDF(t *testing.T) {
@@ -35,25 +33,28 @@ func TestRuntimeOpensGeneratedPDF(t *testing.T) {
 		}
 	}()
 
-	var pageCount int
-	err = runtime.withDocument(
-		ctx,
-		bytes.NewReader(data),
-		func(worker instance, document references.FPDF_DOCUMENT) error {
-			response, err := worker.FPDF_GetPageCount(&requests.FPDF_GetPageCount{
-				Document: document,
-			})
-			if err != nil {
-				return err
-			}
-			pageCount = response.PageCount
-			return nil
-		},
-	)
+	extractor, err := NewExtractor(runtime)
 	if err != nil {
-		t.Fatalf("withDocument() returned an unexpected error: %v", err)
+		t.Fatalf("NewExtractor() returned an unexpected error: %v", err)
 	}
-	if got, want := pageCount, 1; got != want {
+
+	layout, err := extractor.Extract(ctx, bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("Extract() returned an unexpected error: %v", err)
+	}
+	if got, want := len(layout.Pages), 1; got != want {
 		t.Fatalf("page count = %d, want %d", got, want)
+	}
+	page := layout.Pages[0]
+	if page.Width != 612 || page.Height != 792 {
+		t.Fatalf("page size = %vx%v, want 612x792", page.Width, page.Height)
+	}
+
+	var text strings.Builder
+	for _, run := range page.TextRuns {
+		text.WriteString(run.Text)
+	}
+	if got, want := text.String(), "TransmuteMD PDFium smoke test"; !strings.Contains(got, want) {
+		t.Fatalf("extracted text = %q, want it to contain %q", got, want)
 	}
 }

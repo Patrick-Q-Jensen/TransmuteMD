@@ -150,7 +150,7 @@ Markdown text using the embedded PDFium WebAssembly backend.
       WASM digest are recorded, but binary distribution remains blocked
       because upstream does not identify the exact PDFium revision, build
       tool versions, or complete incorporated third-party notice set.
-- [ ] Extract page text and geometry into the neutral layout model.
+- [x] Extract page text and geometry into the neutral layout model.
 - [ ] Implement basic reading order and paragraph grouping.
 - [ ] Implement plain paragraphs in the Markdown renderer.
 - [ ] Support writing to stdout and to a specified output file.
@@ -249,3 +249,4 @@ A task is complete when:
 | 2026-09-26 | Defined context-aware extraction, analysis, and rendering contracts with explicit ownership and validation rules. |
 | 2026-09-26 | Integrated the embedded PDFium WebAssembly runtime with isolated filesystem access, cancellation, deterministic cleanup, and a generated smoke-test fixture. |
 | 2026-09-26 | Added the initial dependency inventory and notice bundle; blocked binary distribution pending the complete embedded PDFium provenance and license audit. |
+| 2026-09-26 | Implemented PDFium page, character geometry, rotation, and font evidence extraction into the neutral layout model. |

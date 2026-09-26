@@ -64,10 +64,17 @@ type instanceStub struct {
 	openErr          error
 	closeDocumentErr error
 	pageCount        int
+	pageCountErr     error
+	pageSize         *responses.FPDF_GetPageSizeByIndex
+	pageSizeErr      error
+	structuredText   *responses.GetPageTextStructured
+	structuredErr    error
 	closeErr         error
 	killErr          error
 	killDone         chan struct{}
 	request          *requests.OpenDocument
+	pageSizeRequest  *requests.FPDF_GetPageSizeByIndex
+	textRequest      *requests.GetPageTextStructured
 }
 
 func (i *instanceStub) OpenDocument(request *requests.OpenDocument) (*responses.OpenDocument, error) {
@@ -90,7 +97,23 @@ func (i *instanceStub) FPDF_GetPageCount(
 	*requests.FPDF_GetPageCount,
 ) (*responses.FPDF_GetPageCount, error) {
 	i.log.add("get page count")
-	return &responses.FPDF_GetPageCount{PageCount: i.pageCount}, nil
+	return &responses.FPDF_GetPageCount{PageCount: i.pageCount}, i.pageCountErr
+}
+
+func (i *instanceStub) FPDF_GetPageSizeByIndex(
+	request *requests.FPDF_GetPageSizeByIndex,
+) (*responses.FPDF_GetPageSizeByIndex, error) {
+	i.log.add("get page size")
+	i.pageSizeRequest = request
+	return i.pageSize, i.pageSizeErr
+}
+
+func (i *instanceStub) GetPageTextStructured(
+	request *requests.GetPageTextStructured,
+) (*responses.GetPageTextStructured, error) {
+	i.log.add("get structured text")
+	i.textRequest = request
+	return i.structuredText, i.structuredErr
 }
 
 func (i *instanceStub) Close() error {

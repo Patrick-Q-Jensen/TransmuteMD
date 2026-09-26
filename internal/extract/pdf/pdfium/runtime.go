@@ -26,6 +26,8 @@ type instance interface {
 	OpenDocument(request *requests.OpenDocument) (*responses.OpenDocument, error)
 	FPDF_CloseDocument(request *requests.FPDF_CloseDocument) (*responses.FPDF_CloseDocument, error)
 	FPDF_GetPageCount(request *requests.FPDF_GetPageCount) (*responses.FPDF_GetPageCount, error)
+	FPDF_GetPageSizeByIndex(request *requests.FPDF_GetPageSizeByIndex) (*responses.FPDF_GetPageSizeByIndex, error)
+	GetPageTextStructured(request *requests.GetPageTextStructured) (*responses.GetPageTextStructured, error)
 	Close() error
 	Kill() error
 }

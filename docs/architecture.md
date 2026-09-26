@@ -252,6 +252,15 @@ through `extract.Source`, adapted from `io.ReaderAt` to `io.ReadSeeker` with an
 `io.SectionReader`; PDFium therefore needs neither a host path nor an
 application-level copy of the complete file.
 
+Extraction requests page dimensions and character-level structured text.
+Each non-empty Unicode character becomes an initial text run in extraction
+order; joining characters into lines and paragraphs remains analysis work.
+PDFium's bottom-left-origin point coordinates are normalized to the shared
+top-left-origin convention. Character angles are converted from radians to
+degrees, rendered font size is preferred over nominal size, negative unknown
+font weights become zero, and the PDF font italic flag becomes neutral style
+evidence.
+
 Wazero is configured to terminate active WebAssembly execution when its
 worker context is cancelled. Acquiring an instance uses the conversion
 context, and cancellation kills that instance rather than returning it for

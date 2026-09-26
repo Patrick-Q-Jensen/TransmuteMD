@@ -1,0 +1,264 @@
+package pdfium
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"math"
+	"strings"
+	"testing"
+
+	"github.com/klippa-app/go-pdfium/responses"
+)
+
+func TestExtractorMapsPDFiumLayout(t *testing.T) {
+	t.Parallel()
+
+	log := &eventLog{}
+	worker := &instanceStub{
+		log:       log,
+		document:  "document",
+		pageCount: 1,
+		pageSize: &responses.FPDF_GetPageSizeByIndex{
+			Page:   0,
+			Width:  612,
+			Height: 792,
+		},
+		structuredText: &responses.GetPageTextStructured{
+			Page: 0,
+			Chars: []*responses.GetPageTextStructuredChar{
+				{
+					Text:  "T",
+					Angle: math.Pi / 2,
+					PointPosition: responses.CharPosition{
+						Left:   72,
+						Top:    720,
+						Right:  80,
+						Bottom: 708,
+					},
+					FontInformation: &responses.FontInformation{
+						Size:         12,
+						RenderedSize: 13,
+						Weight:       700,
+						Name:         "Example Sans",
+						Flags:        fontFlagItalic,
+					},
+				},
+				{
+					Text: "",
+				},
+			},
+		},
+	}
+	runtime := &Runtime{pool: &poolStub{log: log, worker: worker}}
+	extractor, err := NewExtractor(runtime)
+	if err != nil {
+		t.Fatalf("NewExtractor() returned an unexpected error: %v", err)
+	}
+
+	layout, err := extractor.Extract(
+		context.Background(),
+		bytes.NewReader([]byte("%PDF-source")),
+	)
+	if err != nil {
+		t.Fatalf("Extract() returned an unexpected error: %v", err)
+	}
+
+	if got, want := extractor.Name(), "pdfium-wasm"; got != want {
+		t.Fatalf("Name() = %q, want %q", got, want)
+	}
+	if len(layout.Pages) != 1 {
+		t.Fatalf("page count = %d, want 1", len(layout.Pages))
+	}
+	page := layout.Pages[0]
+	if page.Number != 1 || page.Width != 612 || page.Height != 792 {
+		t.Fatalf("page = %+v, want number 1 and size 612x792", page)
+	}
+	if len(page.TextRuns) != 1 {
+		t.Fatalf("text run count = %d, want 1", len(page.TextRuns))
+	}
+
+	run := page.TextRuns[0]
+	if got, want := run.Text, "T"; got != want {
+		t.Errorf("text = %q, want %q", got, want)
+	}
+	if got, want := run.Bounds.Top, 72.0; got != want {
+		t.Errorf("top = %v, want %v", got, want)
+	}
+	if got, want := run.Bounds.Bottom, 84.0; got != want {
+		t.Errorf("bottom = %v, want %v", got, want)
+	}
+	if math.Abs(run.RotationDegrees-90) > 0.0001 {
+		t.Errorf("rotation = %v, want 90 degrees", run.RotationDegrees)
+	}
+	if got, want := run.Style.FontSize, 13.0; got != want {
+		t.Errorf("font size = %v, want rendered size %v", got, want)
+	}
+	if run.Style.FontName != "Example Sans" || run.Style.FontWeight != 700 || !run.Style.Italic {
+		t.Errorf("style = %+v, want mapped font name, weight, and italic flag", run.Style)
+	}
+
+	if worker.pageSizeRequest == nil || worker.pageSizeRequest.Index != 0 {
+		t.Fatalf("page size request = %+v, want page index 0", worker.pageSizeRequest)
+	}
+	if worker.textRequest == nil {
+		t.Fatal("structured text request was nil")
+	}
+	if worker.textRequest.Mode != "char" || !worker.textRequest.CollectFontInformation {
+		t.Fatalf("structured text request = %+v, want character mode with font information", worker.textRequest)
+	}
+}
+
+func TestExtractorNormalizesUnavailableFontInformation(t *testing.T) {
+	t.Parallel()
+
+	run, include, err := mapCharacter(100, &responses.GetPageTextStructuredChar{
+		Text: " ",
+		PointPosition: responses.CharPosition{
+			Left:   1,
+			Top:    10,
+			Right:  2,
+			Bottom: 5,
+		},
+		FontInformation: &responses.FontInformation{
+			Size:         8,
+			RenderedSize: 0,
+			Weight:       -1,
+		},
+	})
+
+	if err != nil {
+		t.Fatalf("mapCharacter() returned an unexpected error: %v", err)
+	}
+	if !include {
+		t.Fatal("mapCharacter() excluded a visible space")
+	}
+	if got, want := run.Style.FontSize, 8.0; got != want {
+		t.Errorf("font size = %v, want fallback size %v", got, want)
+	}
+	if got := run.Style.FontWeight; got != 0 {
+		t.Errorf("font weight = %d, want unknown value normalized to zero", got)
+	}
+}
+
+func TestMapCharacterRejectsInvalidPDFiumData(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		char *responses.GetPageTextStructuredChar
+	}{
+		{
+			name: "nil character",
+			char: nil,
+		},
+		{
+			name: "inverted vertical bounds",
+			char: &responses.GetPageTextStructuredChar{
+				Text: "T",
+				PointPosition: responses.CharPosition{
+					Left:   1,
+					Top:    5,
+					Right:  2,
+					Bottom: 10,
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if _, _, err := mapCharacter(100, test.char); err == nil {
+				t.Fatal("mapCharacter() returned nil error for invalid data")
+			}
+		})
+	}
+}
+
+func TestExtractorReportsPageContext(t *testing.T) {
+	t.Parallel()
+
+	log := &eventLog{}
+	sizeErr := errors.New("size failed")
+	worker := &instanceStub{
+		log:         log,
+		document:    "document",
+		pageCount:   1,
+		pageSizeErr: sizeErr,
+	}
+	runtime := &Runtime{pool: &poolStub{log: log, worker: worker}}
+	extractor, err := NewExtractor(runtime)
+	if err != nil {
+		t.Fatalf("NewExtractor() returned an unexpected error: %v", err)
+	}
+
+	_, err = extractor.Extract(
+		context.Background(),
+		bytes.NewReader([]byte("%PDF-source")),
+	)
+	if !errors.Is(err, sizeErr) {
+		t.Fatalf("Extract() error = %v, want page-size error %v", err, sizeErr)
+	}
+	if !strings.Contains(err.Error(), "page 1: get size") {
+		t.Fatalf("Extract() error = %q, want page context", err)
+	}
+}
+
+func TestExtractorRejectsMismatchedPageResponse(t *testing.T) {
+	t.Parallel()
+
+	log := &eventLog{}
+	worker := &instanceStub{
+		log:       log,
+		document:  "document",
+		pageCount: 1,
+		pageSize: &responses.FPDF_GetPageSizeByIndex{
+			Page:   1,
+			Width:  612,
+			Height: 792,
+		},
+	}
+	runtime := &Runtime{pool: &poolStub{log: log, worker: worker}}
+	extractor, err := NewExtractor(runtime)
+	if err != nil {
+		t.Fatalf("NewExtractor() returned an unexpected error: %v", err)
+	}
+
+	_, err = extractor.Extract(
+		context.Background(),
+		bytes.NewReader([]byte("%PDF-source")),
+	)
+	if !errors.Is(err, errMismatchedPage) {
+		t.Fatalf("Extract() error = %v, want %v", err, errMismatchedPage)
+	}
+}
+
+func TestExtractorRejectsDocumentWithoutPages(t *testing.T) {
+	t.Parallel()
+
+	log := &eventLog{}
+	worker := &instanceStub{log: log, document: "document"}
+	runtime := &Runtime{pool: &poolStub{log: log, worker: worker}}
+	extractor, err := NewExtractor(runtime)
+	if err != nil {
+		t.Fatalf("NewExtractor() returned an unexpected error: %v", err)
+	}
+
+	_, err = extractor.Extract(
+		context.Background(),
+		bytes.NewReader([]byte("%PDF-source")),
+	)
+	if !errors.Is(err, errNoPages) {
+		t.Fatalf("Extract() error = %v, want %v", err, errNoPages)
+	}
+}
+
+func TestNewExtractorRejectsNilRuntime(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewExtractor(nil)
+	if !errors.Is(err, errNilRuntime) {
+		t.Fatalf("NewExtractor() error = %v, want %v", err, errNilRuntime)
+	}
+}
