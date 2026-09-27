@@ -63,30 +63,32 @@ func (p *poolStub) Close() error {
 }
 
 type instanceStub struct {
-	log              *eventLog
-	document         references.FPDF_DOCUMENT
-	openErr          error
-	closeDocumentErr error
-	pageCount        int
-	pageCountErr     error
-	pageSize         *responses.FPDF_GetPageSizeByIndex
-	pageSizeErr      error
-	structuredText   *responses.GetPageTextStructured
-	structuredErr    error
-	annotationCount  int
-	annotation       references.FPDF_ANNOTATION
-	annotationType   enums.FPDF_ANNOTATION_SUBTYPE
-	annotationLink   references.FPDF_LINK
-	linkAction       *references.FPDF_ACTION
-	actionType       enums.FPDF_ACTION_ACTION
-	actionURI        *string
-	annotationRect   structs.FPDF_FS_RECTF
-	closeErr         error
-	killErr          error
-	killDone         chan struct{}
-	request          *requests.OpenDocument
-	pageSizeRequest  *requests.FPDF_GetPageSizeByIndex
-	textRequest      *requests.GetPageTextStructured
+	log                *eventLog
+	document           references.FPDF_DOCUMENT
+	openErr            error
+	closeDocumentErr   error
+	pageCount          int
+	pageCountErr       error
+	pageSize           *responses.FPDF_GetPageSizeByIndex
+	pageSizeErr        error
+	structuredText     *responses.GetPageTextStructured
+	structuredErr      error
+	annotationCount    int
+	annotation         references.FPDF_ANNOTATION
+	annotationType     enums.FPDF_ANNOTATION_SUBTYPE
+	annotationTypeErr  error
+	annotationLink     references.FPDF_LINK
+	linkAction         *references.FPDF_ACTION
+	actionType         enums.FPDF_ACTION_ACTION
+	actionURI          *string
+	annotationRect     structs.FPDF_FS_RECTF
+	closeAnnotationErr error
+	closeErr           error
+	killErr            error
+	killDone           chan struct{}
+	request            *requests.OpenDocument
+	pageSizeRequest    *requests.FPDF_GetPageSizeByIndex
+	textRequest        *requests.GetPageTextStructured
 }
 
 func (i *instanceStub) OpenDocument(request *requests.OpenDocument) (*responses.OpenDocument, error) {
@@ -146,13 +148,13 @@ func (i *instanceStub) FPDFPage_CloseAnnot(
 	*requests.FPDFPage_CloseAnnot,
 ) (*responses.FPDFPage_CloseAnnot, error) {
 	i.log.add("close annotation")
-	return &responses.FPDFPage_CloseAnnot{}, nil
+	return &responses.FPDFPage_CloseAnnot{}, i.closeAnnotationErr
 }
 
 func (i *instanceStub) FPDFAnnot_GetSubtype(
 	*requests.FPDFAnnot_GetSubtype,
 ) (*responses.FPDFAnnot_GetSubtype, error) {
-	return &responses.FPDFAnnot_GetSubtype{Subtype: i.annotationType}, nil
+	return &responses.FPDFAnnot_GetSubtype{Subtype: i.annotationType}, i.annotationTypeErr
 }
 
 func (i *instanceStub) FPDFAnnot_GetLink(
@@ -327,6 +329,53 @@ func TestRuntimeWithInstanceJoinsCancellationAndKillErrors(t *testing.T) {
 	}
 	if !errors.Is(err, killErr) {
 		t.Fatalf("withInstance() error = %v, want kill error %v", err, killErr)
+	}
+}
+
+func TestRuntimeWithDocumentCleansUpAfterCancellation(t *testing.T) {
+	t.Parallel()
+
+	log := &eventLog{}
+	documentCloseErr := errors.New("document close failed")
+	killErr := errors.New("kill failed")
+	killDone := make(chan struct{})
+	worker := &instanceStub{
+		log:              log,
+		document:         "document",
+		closeDocumentErr: documentCloseErr,
+		killErr:          killErr,
+		killDone:         killDone,
+	}
+	runtime := &Runtime{pool: &poolStub{log: log, worker: worker}}
+	ctx, cancel := context.WithCancel(context.Background())
+
+	err := runtime.withDocument(
+		ctx,
+		bytes.NewReader([]byte("%PDF-source")),
+		func(instance, references.FPDF_DOCUMENT) error {
+			cancel()
+			<-killDone
+			return nil
+		},
+	)
+
+	for _, want := range []error{
+		context.Canceled,
+		documentCloseErr,
+		killErr,
+	} {
+		if !errors.Is(err, want) {
+			t.Errorf("withDocument() error = %v, want wrapped error %v", err, want)
+		}
+	}
+	wantEvents := []string{
+		"acquire instance",
+		"open document",
+		"kill instance",
+		"close document",
+	}
+	if got := log.snapshot(); !slices.Equal(got, wantEvents) {
+		t.Fatalf("events = %v, want %v", got, wantEvents)
 	}
 }
 

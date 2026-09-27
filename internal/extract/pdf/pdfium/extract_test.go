@@ -175,6 +175,44 @@ func TestExtractAnnotationLinkIgnoresUnsafeURI(t *testing.T) {
 	}
 }
 
+func TestExtractorClosesAnnotationAndPreservesInspectionErrors(t *testing.T) {
+	t.Parallel()
+
+	log := &eventLog{}
+	inspectErr := errors.New("inspect annotation failed")
+	closeErr := errors.New("close annotation failed")
+	worker := &instanceStub{
+		log:                log,
+		document:           "document",
+		pageCount:          1,
+		pageSize:           &responses.FPDF_GetPageSizeByIndex{Page: 0, Width: 100, Height: 100},
+		structuredText:     &responses.GetPageTextStructured{Page: 0},
+		annotationCount:    1,
+		annotation:         "annotation",
+		annotationTypeErr:  inspectErr,
+		closeAnnotationErr: closeErr,
+	}
+	extractor, err := NewExtractor(
+		&Runtime{pool: &poolStub{log: log, worker: worker}},
+	)
+	if err != nil {
+		t.Fatalf("NewExtractor() returned an unexpected error: %v", err)
+	}
+
+	_, err = extractor.Extract(
+		context.Background(),
+		bytes.NewReader([]byte("%PDF")),
+	)
+	for _, want := range []error{inspectErr, closeErr} {
+		if !errors.Is(err, want) {
+			t.Errorf("Extract() error = %v, want wrapped error %v", err, want)
+		}
+	}
+	if !slices.Contains(log.snapshot(), "close annotation") {
+		t.Fatal("annotation was not closed after inspection failure")
+	}
+}
+
 func TestExtractorNormalizesUnavailableFontInformation(t *testing.T) {
 	t.Parallel()
 
