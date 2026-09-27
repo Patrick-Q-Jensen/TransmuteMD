@@ -436,6 +436,9 @@ The initial golden test converts the self-authored generated PDF through the
 real embedded PDFium runtime, basic analyzer, Markdown renderer, and buffered
 writer destination. Its committed Markdown golden is UTF-8 with an enforced
 LF checkout policy and is referenced by the fixture provenance manifest.
+The Phase 2 golden adds three-page coverage for headings, wrapped paragraphs,
+lists, two-column ordering, repeated page furniture, external links, and
+table/code fallback diagnostics through the same real pipeline.
 
 ## 11. Portability and distribution
 
