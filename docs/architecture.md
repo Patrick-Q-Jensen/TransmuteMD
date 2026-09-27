@@ -131,6 +131,14 @@ continuations. Differently indented markers start separate lists rather than
 inferring unsupported nesting, and ambiguous unmarked lines remain
 paragraphs.
 
+Two-column reading order is inferred only where a page region has a clear
+center gutter, at least two lines on each side, and vertically overlapping
+column content. Full-width lines delimit regions and remain in page order;
+within a detected region, the left column precedes the right column. Explicit
+flow boundaries prevent paragraphs and lists from merging across columns.
+Ambiguous layouts retain geometric row order rather than forcing a column
+interpretation.
+
 ### Rendering
 
 The renderer converts the semantic document to Markdown. It owns Markdown

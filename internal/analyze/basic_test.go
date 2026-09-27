@@ -485,6 +485,84 @@ func TestBasicAnalyzerRequiresMarkerSeparator(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzerOrdersTwoColumnsBeforeGroupingParagraphs(t *testing.T) {
+	t.Parallel()
+
+	title := textRun("Two-column report", 10, 10, 210, 30)
+	title.Style = document.TextStyle{FontSize: 20, FontWeight: 700}
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("Right starts here", 125, 44, 205, 54),
+					textRun("Left starts here", 10, 44, 90, 54),
+					textRun("right continues.", 125, 58, 200, 68),
+					title,
+					textRun("left continues.", 10, 58, 85, 68),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got, want := len(result.Blocks), 3; got != want {
+		t.Fatalf("block count = %d, want %d", got, want)
+	}
+	heading, ok := result.Blocks[0].(*document.Heading)
+	if !ok || heading.Text != "Two-column report" {
+		t.Fatalf("block 1 = %#v, want report heading", result.Blocks[0])
+	}
+	for index, want := range []string{
+		"Left starts here left continues.",
+		"Right starts here right continues.",
+	} {
+		paragraph, ok := result.Blocks[index+1].(*document.Paragraph)
+		if !ok {
+			t.Fatalf(
+				"block %d has type %T, want *document.Paragraph",
+				index+2,
+				result.Blocks[index+1],
+			)
+		}
+		if paragraph.Text != want {
+			t.Fatalf("block %d text = %q, want %q", index+2, paragraph.Text, want)
+		}
+	}
+}
+
+func TestBasicAnalyzerLeavesAmbiguousColumnsInRowOrder(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("Left", 10, 10, 80, 20),
+					textRun("right", 125, 10, 200, 20),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	want := []string{"Left right"}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paragraphs = %#v, want %#v", got, want)
+	}
+}
+
 func TestBasicAnalyzerReturnsEmptyDocumentForWhitespaceOnlyLayout(t *testing.T) {
 	t.Parallel()
 

@@ -24,6 +24,9 @@ const (
 	shortLineWidthRatio     = 0.15
 	listMarkerAlignRatio    = 0.5
 	maximumListMarkerDigits = 9
+	columnGutterScaleRatio  = 1.5
+	columnGutterWidthRatio  = 0.03
+	minimumColumnLines      = 2
 )
 
 var errNilLayout = errors.New("layout must not be nil")
@@ -80,12 +83,13 @@ type orderedRun struct {
 }
 
 type textLine struct {
-	runs   []orderedRun
-	top    float64
-	bottom float64
-	left   float64
-	right  float64
-	text   string
+	runs        []orderedRun
+	top         float64
+	bottom      float64
+	left        float64
+	right       float64
+	text        string
+	breakBefore bool
 }
 
 func analyzePage(ctx context.Context, page document.Page) ([]document.Block, error) {
@@ -112,6 +116,7 @@ func analyzePage(ctx context.Context, page document.Page) ([]document.Block, err
 		}
 		lines[len(lines)-1].add(run)
 	}
+	lines = splitCenterGutterLines(lines, page.Width)
 
 	for index := range lines {
 		if err := ctx.Err(); err != nil {
@@ -122,6 +127,7 @@ func analyzePage(ctx context.Context, page document.Page) ([]document.Block, err
 		}
 	}
 	slices.SortStableFunc(lines, compareLines)
+	lines = orderColumns(lines)
 
 	return groupBlocks(ctx, lines)
 }
@@ -174,6 +180,63 @@ func belongsToLine(line textLine, run document.TextRun) bool {
 		(line.top+line.bottom)/2 - verticalCenter(run.Bounds),
 	)
 	return centerDistance <= math.Max(lineHeight, runHeight)*maximumLineCenterRatio
+}
+
+func splitCenterGutterLines(lines []textLine, pageWidth float64) []textLine {
+	pageCenter := pageWidth / 2
+	splits := make([]int, len(lines))
+	candidates := 0
+	for lineIndex := range lines {
+		line := &lines[lineIndex]
+		slices.SortStableFunc(line.runs, func(left, right orderedRun) int {
+			return compareFloat(left.run.Bounds.Left, right.run.Bounds.Left)
+		})
+
+		splits[lineIndex] = -1
+		for index := 1; index < len(line.runs); index++ {
+			left := line.runs[index-1].run
+			right := line.runs[index].run
+			gap := right.Bounds.Left - left.Bounds.Right
+			scale := math.Max(
+				math.Max(left.Style.FontSize, left.Bounds.Height()),
+				math.Max(right.Style.FontSize, right.Bounds.Height()),
+			)
+			threshold := math.Max(
+				scale*columnGutterScaleRatio,
+				pageWidth*columnGutterWidthRatio,
+			)
+			if left.Bounds.Right <= pageCenter &&
+				right.Bounds.Left >= pageCenter &&
+				gap > threshold {
+				splits[lineIndex] = index
+				candidates++
+				break
+			}
+		}
+	}
+	if candidates < minimumColumnLines {
+		return lines
+	}
+
+	result := make([]textLine, 0, len(lines)+candidates)
+	for lineIndex, line := range lines {
+		split := splits[lineIndex]
+		if split < 0 {
+			result = append(result, line)
+			continue
+		}
+
+		left := newTextLine(line.runs[0])
+		for _, run := range line.runs[1:split] {
+			left.add(run)
+		}
+		right := newTextLine(line.runs[split])
+		for _, run := range line.runs[split+1:] {
+			right.add(run)
+		}
+		result = append(result, left, right)
+	}
+	return result
 }
 
 func newTextLine(run orderedRun) textLine {
@@ -257,6 +320,110 @@ func compareLines(left, right textLine) int {
 	return compareFloat(left.left, right.left)
 }
 
+func orderColumns(lines []textLine) []textLine {
+	if len(lines) < minimumColumnLines*2 {
+		return lines
+	}
+
+	contentLeft := math.Inf(1)
+	contentRight := math.Inf(-1)
+	for _, line := range lines {
+		if line.text == "" {
+			continue
+		}
+		contentLeft = math.Min(contentLeft, line.left)
+		contentRight = math.Max(contentRight, line.right)
+	}
+	if math.IsInf(contentLeft, 1) || contentRight <= contentLeft {
+		return lines
+	}
+
+	center := (contentLeft + contentRight) / 2
+	gutter := math.Max(
+		medianLineScale(lines)*columnGutterScaleRatio,
+		(contentRight-contentLeft)*columnGutterWidthRatio,
+	)
+	leftLimit := center - gutter/2
+	rightLimit := center + gutter/2
+
+	result := make([]textLine, 0, len(lines))
+	for start := 0; start < len(lines); {
+		if spansColumnGutter(lines[start], leftLimit, rightLimit) {
+			result = append(result, lines[start])
+			start++
+			continue
+		}
+
+		end := start
+		for end < len(lines) &&
+			!spansColumnGutter(lines[end], leftLimit, rightLimit) {
+			end++
+		}
+		region, ok := orderColumnRegion(lines[start:end], leftLimit, rightLimit)
+		if !ok {
+			result = append(result, lines[start:end]...)
+		} else {
+			if len(result) > 0 {
+				region[0].breakBefore = true
+			}
+			result = append(result, region...)
+		}
+		start = end
+	}
+	return result
+}
+
+func spansColumnGutter(line textLine, leftLimit, rightLimit float64) bool {
+	return line.left < rightLimit && line.right > leftLimit
+}
+
+func orderColumnRegion(
+	lines []textLine,
+	leftLimit,
+	rightLimit float64,
+) ([]textLine, bool) {
+	left := make([]textLine, 0, len(lines))
+	right := make([]textLine, 0, len(lines))
+	for _, line := range lines {
+		switch {
+		case line.right <= leftLimit:
+			left = append(left, line)
+		case line.left >= rightLimit:
+			right = append(right, line)
+		default:
+			return nil, false
+		}
+	}
+	if len(left) < minimumColumnLines || len(right) < minimumColumnLines {
+		return nil, false
+	}
+	if !verticalRangesOverlap(left, right) {
+		return nil, false
+	}
+
+	ordered := make([]textLine, 0, len(lines))
+	ordered = append(ordered, left...)
+	right[0].breakBefore = true
+	ordered = append(ordered, right...)
+	return ordered, true
+}
+
+func verticalRangesOverlap(left, right []textLine) bool {
+	leftTop, leftBottom := lineRange(left)
+	rightTop, rightBottom := lineRange(right)
+	return math.Min(leftBottom, rightBottom) > math.Max(leftTop, rightTop)
+}
+
+func lineRange(lines []textLine) (float64, float64) {
+	top := math.Inf(1)
+	bottom := math.Inf(-1)
+	for _, line := range lines {
+		top = math.Min(top, line.top)
+		bottom = math.Max(bottom, line.bottom)
+	}
+	return top, bottom
+}
+
 func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error) {
 	blocks := make([]document.Block, 0, len(lines))
 	headingLevels := detectHeadingLevels(lines)
@@ -285,6 +452,10 @@ func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error
 		}
 		if line.text == "" {
 			continue
+		}
+		if line.breakBefore {
+			flushParagraph()
+			flushList()
 		}
 		if headingLevels[index] != 0 {
 			flushParagraph()
@@ -580,6 +751,9 @@ func startsNewParagraph(
 	pageLeft,
 	pageRight float64,
 ) bool {
+	if current.breakBefore {
+		return true
+	}
 	gap := current.top - previous.bottom
 	lineHeight := math.Max(previous.bottom-previous.top, current.bottom-current.top)
 	if lineHeight > 0 && gap > lineHeight*paragraphGapRatio {
