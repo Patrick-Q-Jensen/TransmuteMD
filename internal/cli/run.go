@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/app"
+	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/document"
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/extract"
 )
 
@@ -37,7 +38,11 @@ var (
 
 // Converter runs one conversion using caller-owned input and output.
 type Converter interface {
-	Convert(ctx context.Context, source extract.Source, destination app.Destination) error
+	ConvertWithResult(
+		ctx context.Context,
+		source extract.Source,
+		destination app.Destination,
+	) (app.Result, error)
 }
 
 // ConverterFactory creates one converter and its process-scoped resources.
@@ -90,18 +95,24 @@ func (runner *Runner) Run(ctx context.Context, arguments []string) int {
 		return ExitSuccess
 	}
 
-	err = runner.convert(ctx, parsed)
+	result, err := runner.convert(ctx, parsed)
 	if err == nil {
+		for _, diagnostic := range result.Diagnostics {
+			runner.writeWarning(diagnostic)
+		}
 		return ExitSuccess
 	}
 	runner.writeDiagnostic(err)
 	return exitCode(err)
 }
 
-func (runner *Runner) convert(ctx context.Context, parsed options) (resultErr error) {
+func (runner *Runner) convert(
+	ctx context.Context,
+	parsed options,
+) (result app.Result, resultErr error) {
 	source, inputInfo, err := openPDFSource(parsed.input)
 	if err != nil {
-		return fmt.Errorf("%w: %w", errInput, err)
+		return app.Result{}, fmt.Errorf("%w: %w", errInput, err)
 	}
 
 	resources := &resourceGroup{}
@@ -114,7 +125,7 @@ func (runner *Runner) convert(ctx context.Context, parsed options) (resultErr er
 
 	destination, err := runner.destination(parsed, inputInfo)
 	if err != nil {
-		return err
+		return app.Result{}, err
 	}
 
 	converter, closer, err := runner.factory(ctx)
@@ -122,17 +133,17 @@ func (runner *Runner) convert(ctx context.Context, parsed options) (resultErr er
 		resources.add(closer)
 	}
 	if err != nil {
-		return fmt.Errorf("initialize conversion pipeline: %w", err)
+		return app.Result{}, fmt.Errorf("initialize conversion pipeline: %w", err)
 	}
 	if converter == nil {
-		return errors.New("initialize conversion pipeline: factory returned a nil converter")
+		return app.Result{}, errors.New("initialize conversion pipeline: factory returned a nil converter")
 	}
 
 	transactional := &resourceDestination{
 		resources:   resources,
 		destination: destination,
 	}
-	return converter.Convert(ctx, source, transactional)
+	return converter.ConvertWithResult(ctx, source, transactional)
 }
 
 func (runner *Runner) destination(
@@ -164,6 +175,20 @@ func (runner *Runner) destination(
 
 func (runner *Runner) writeDiagnostic(err error) {
 	_, _ = fmt.Fprintf(runner.stderr, "%s: %v\n", programName, err)
+}
+
+func (runner *Runner) writeWarning(diagnostic document.Diagnostic) {
+	location := ""
+	if diagnostic.Page > 0 {
+		location = fmt.Sprintf("page %d: ", diagnostic.Page)
+	}
+	_, _ = fmt.Fprintf(
+		runner.stderr,
+		"%s: warning: %s%s\n",
+		programName,
+		location,
+		diagnostic.Message,
+	)
 }
 
 func exitCode(err error) int {

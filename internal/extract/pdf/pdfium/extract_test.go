@@ -158,7 +158,7 @@ func TestExtractAnnotationLinkIgnoresUnsafeURI(t *testing.T) {
 		actionURI:      &uri,
 	}
 
-	_, include, err := extractAnnotationLink(
+	_, include, omission, err := extractAnnotationLink(
 		worker,
 		"document",
 		"annotation",
@@ -169,6 +169,9 @@ func TestExtractAnnotationLinkIgnoresUnsafeURI(t *testing.T) {
 	}
 	if include {
 		t.Fatal("extractAnnotationLink() included an unsafe URI")
+	}
+	if omission == "" {
+		t.Fatal("extractAnnotationLink() returned no omission diagnostic")
 	}
 }
 

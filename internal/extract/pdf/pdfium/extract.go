@@ -112,11 +112,12 @@ func extractLayout(
 			return err
 		}
 
-		page, err := extractPage(worker, pdf, index)
+		page, diagnostics, err := extractPage(worker, pdf, index)
 		if err != nil {
 			return fmt.Errorf("page %d: %w", index+1, err)
 		}
 		layout.Pages = append(layout.Pages, page)
+		layout.Diagnostics = append(layout.Diagnostics, diagnostics...)
 	}
 	return nil
 }
@@ -125,19 +126,19 @@ func extractPage(
 	worker instance,
 	pdf references.FPDF_DOCUMENT,
 	index int,
-) (document.Page, error) {
+) (document.Page, []document.Diagnostic, error) {
 	size, err := worker.FPDF_GetPageSizeByIndex(&requests.FPDF_GetPageSizeByIndex{
 		Document: pdf,
 		Index:    index,
 	})
 	if err != nil {
-		return document.Page{}, fmt.Errorf("get size: %w", err)
+		return document.Page{}, nil, fmt.Errorf("get size: %w", err)
 	}
 	if size == nil {
-		return document.Page{}, errNilPageSize
+		return document.Page{}, nil, errNilPageSize
 	}
 	if size.Page != index {
-		return document.Page{}, fmt.Errorf(
+		return document.Page{}, nil, fmt.Errorf(
 			"%w: size page index is %d, requested %d",
 			errMismatchedPage,
 			size.Page,
@@ -156,13 +157,13 @@ func extractPage(
 		CollectFontInformation: true,
 	})
 	if err != nil {
-		return document.Page{}, fmt.Errorf("extract structured text: %w", err)
+		return document.Page{}, nil, fmt.Errorf("extract structured text: %w", err)
 	}
 	if text == nil {
-		return document.Page{}, errNilStructuredText
+		return document.Page{}, nil, errNilStructuredText
 	}
 	if text.Page != index {
-		return document.Page{}, fmt.Errorf(
+		return document.Page{}, nil, fmt.Errorf(
 			"%w: text page index is %d, requested %d",
 			errMismatchedPage,
 			text.Page,
@@ -174,16 +175,16 @@ func extractPage(
 	for charIndex, char := range text.Chars {
 		run, include, err := mapCharacter(size.Height, char)
 		if err != nil {
-			return document.Page{}, fmt.Errorf("character %d: %w", charIndex+1, err)
+			return document.Page{}, nil, fmt.Errorf("character %d: %w", charIndex+1, err)
 		}
 		if include {
 			runs = append(runs, run)
 		}
 	}
 
-	links, err := extractPageLinks(worker, pdf, index, size.Height)
+	links, diagnostics, err := extractPageLinks(worker, pdf, index, size.Height)
 	if err != nil {
-		return document.Page{}, fmt.Errorf("extract links: %w", err)
+		return document.Page{}, nil, fmt.Errorf("extract links: %w", err)
 	}
 
 	return document.Page{
@@ -192,7 +193,7 @@ func extractPage(
 		Height:   size.Height,
 		TextRuns: runs,
 		Links:    links,
-	}, nil
+	}, diagnostics, nil
 }
 
 func extractPageLinks(
@@ -200,7 +201,7 @@ func extractPageLinks(
 	pdf references.FPDF_DOCUMENT,
 	index int,
 	pageHeight float64,
-) ([]document.LinkAnnotation, error) {
+) ([]document.LinkAnnotation, []document.Diagnostic, error) {
 	page := requests.Page{ByIndex: &requests.PageByIndex{
 		Document: pdf,
 		Index:    index,
@@ -209,26 +210,27 @@ func extractPageLinks(
 		Page: page,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("get annotation count: %w", err)
+		return nil, nil, fmt.Errorf("get annotation count: %w", err)
 	}
 	if count == nil {
-		return nil, errNilAnnotCount
+		return nil, nil, errNilAnnotCount
 	}
 
 	links := make([]document.LinkAnnotation, 0)
+	diagnostics := make([]document.Diagnostic, 0)
 	for annotationIndex := range count.Count {
 		response, err := worker.FPDFPage_GetAnnot(&requests.FPDFPage_GetAnnot{
 			Page:  page,
 			Index: annotationIndex,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("annotation %d: get: %w", annotationIndex+1, err)
+			return nil, nil, fmt.Errorf("annotation %d: get: %w", annotationIndex+1, err)
 		}
 		if response == nil || response.Annotation == "" {
-			return nil, fmt.Errorf("annotation %d: %w", annotationIndex+1, errNilAnnotation)
+			return nil, nil, fmt.Errorf("annotation %d: %w", annotationIndex+1, errNilAnnotation)
 		}
 
-		link, include, linkErr := extractAnnotationLink(
+		link, include, omission, linkErr := extractAnnotationLink(
 			worker,
 			pdf,
 			response.Annotation,
@@ -241,13 +243,20 @@ func extractPageLinks(
 			linkErr = errors.Join(linkErr, fmt.Errorf("close: %w", closeErr))
 		}
 		if linkErr != nil {
-			return nil, fmt.Errorf("annotation %d: %w", annotationIndex+1, linkErr)
+			return nil, nil, fmt.Errorf("annotation %d: %w", annotationIndex+1, linkErr)
 		}
 		if include {
 			links = append(links, link)
 		}
+		if omission != "" {
+			diagnostics = append(diagnostics, document.Diagnostic{
+				Code:    document.DiagnosticUnsupportedLink,
+				Page:    index + 1,
+				Message: omission,
+			})
+		}
 	}
-	return links, nil
+	return links, diagnostics, nil
 }
 
 func extractAnnotationLink(
@@ -255,71 +264,77 @@ func extractAnnotationLink(
 	pdf references.FPDF_DOCUMENT,
 	annotation references.FPDF_ANNOTATION,
 	pageHeight float64,
-) (document.LinkAnnotation, bool, error) {
+) (document.LinkAnnotation, bool, string, error) {
 	subtype, err := worker.FPDFAnnot_GetSubtype(&requests.FPDFAnnot_GetSubtype{
 		Annotation: annotation,
 	})
 	if err != nil {
-		return document.LinkAnnotation{}, false, fmt.Errorf("get subtype: %w", err)
+		return document.LinkAnnotation{}, false, "", fmt.Errorf("get subtype: %w", err)
 	}
 	if subtype == nil {
-		return document.LinkAnnotation{}, false, errNilAnnotSubtype
+		return document.LinkAnnotation{}, false, "", errNilAnnotSubtype
 	}
 	if subtype.Subtype != enums.FPDF_ANNOT_SUBTYPE_LINK {
-		return document.LinkAnnotation{}, false, nil
+		return document.LinkAnnotation{}, false, "", nil
 	}
 
 	link, err := worker.FPDFAnnot_GetLink(&requests.FPDFAnnot_GetLink{
 		Annotation: annotation,
 	})
 	if err != nil {
-		return document.LinkAnnotation{}, false, fmt.Errorf("get link: %w", err)
+		return document.LinkAnnotation{}, false, "", fmt.Errorf("get link: %w", err)
 	}
 	if link == nil || link.Link == "" {
-		return document.LinkAnnotation{}, false, errNilAnnotLink
+		return document.LinkAnnotation{}, false, "", errNilAnnotLink
 	}
 	action, err := worker.FPDFLink_GetAction(&requests.FPDFLink_GetAction{
 		Link: link.Link,
 	})
 	if err != nil {
-		return document.LinkAnnotation{}, false, fmt.Errorf("get action: %w", err)
+		return document.LinkAnnotation{}, false, "", fmt.Errorf("get action: %w", err)
 	}
 	if action == nil {
-		return document.LinkAnnotation{}, false, errNilLinkAction
+		return document.LinkAnnotation{}, false, "", errNilLinkAction
 	}
 	if action.Action == nil {
-		return document.LinkAnnotation{}, false, nil
+		return document.LinkAnnotation{}, false,
+			"link without a supported external action was preserved as text", nil
 	}
 	actionType, err := worker.FPDFAction_GetType(&requests.FPDFAction_GetType{
 		Action: *action.Action,
 	})
 	if err != nil {
-		return document.LinkAnnotation{}, false, fmt.Errorf("get action type: %w", err)
+		return document.LinkAnnotation{}, false, "", fmt.Errorf("get action type: %w", err)
 	}
 	if actionType == nil {
-		return document.LinkAnnotation{}, false, errNilActionType
+		return document.LinkAnnotation{}, false, "", errNilActionType
 	}
 	if actionType.Type != enums.FPDF_ACTION_ACTION_URI {
-		return document.LinkAnnotation{}, false, nil
+		return document.LinkAnnotation{}, false,
+			"non-URI link target was preserved as text", nil
 	}
 	uri, err := worker.FPDFAction_GetURIPath(&requests.FPDFAction_GetURIPath{
 		Document: pdf,
 		Action:   *action.Action,
 	})
 	if err != nil {
-		return document.LinkAnnotation{}, false, fmt.Errorf("get URI: %w", err)
+		return document.LinkAnnotation{}, false, "", fmt.Errorf("get URI: %w", err)
 	}
-	if uri == nil || uri.URIPath == nil || !isReliableExternalURI(*uri.URIPath) {
-		return document.LinkAnnotation{}, false, nil
+	if uri == nil {
+		return document.LinkAnnotation{}, false, "", errors.New("PDFium returned no action URI")
+	}
+	if uri.URIPath == nil || !isReliableExternalURI(*uri.URIPath) {
+		return document.LinkAnnotation{}, false,
+			"unsupported or unsafe link URI was preserved as text", nil
 	}
 	rect, err := worker.FPDFAnnot_GetRect(&requests.FPDFAnnot_GetRect{
 		Annotation: annotation,
 	})
 	if err != nil {
-		return document.LinkAnnotation{}, false, fmt.Errorf("get rectangle: %w", err)
+		return document.LinkAnnotation{}, false, "", fmt.Errorf("get rectangle: %w", err)
 	}
 	if rect == nil {
-		return document.LinkAnnotation{}, false, errNilAnnotRect
+		return document.LinkAnnotation{}, false, "", errNilAnnotRect
 	}
 
 	result := document.LinkAnnotation{
@@ -332,9 +347,9 @@ func extractAnnotationLink(
 		Destination: strings.TrimSpace(*uri.URIPath),
 	}
 	if err := result.Validate(); err != nil {
-		return document.LinkAnnotation{}, false, err
+		return document.LinkAnnotation{}, false, "", err
 	}
-	return result, true, nil
+	return result, true, "", nil
 }
 
 func isReliableExternalURI(value string) bool {

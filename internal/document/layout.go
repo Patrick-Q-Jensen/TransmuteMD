@@ -8,7 +8,8 @@ import (
 
 // Layout contains the observed physical content of a source document.
 type Layout struct {
-	Pages []Page
+	Pages       []Page
+	Diagnostics []Diagnostic
 }
 
 // Validate checks the invariants required by layout analysis.
@@ -21,7 +22,7 @@ func (l Layout) Validate() error {
 			return fmt.Errorf("page %d: %w", page.Number, err)
 		}
 	}
-	return nil
+	return validateDiagnostics(l.Diagnostics)
 }
 
 // Page contains the physical text observed on one source page. Dimensions are

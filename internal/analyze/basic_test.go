@@ -611,6 +611,103 @@ func TestBasicAnalyzerMapsLinkAnnotationsToSemanticText(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzerReportsStructureFallbacks(t *testing.T) {
+	t.Parallel()
+
+	codeLine1 := textRun("func main() {", 10, 100, 100, 110)
+	codeLine1.Style.FontName = "Example Mono"
+	codeLine2 := textRun("return", 10, 114, 60, 124)
+	codeLine2.Style.FontName = "Example Mono"
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  400,
+				Height: 300,
+				TextRuns: []document.TextRun{
+					textRun("A", 10, 10, 20, 20),
+					textRun("B", 60, 10, 70, 20),
+					textRun("C", 110, 10, 120, 20),
+					textRun("D", 10, 24, 20, 34),
+					textRun("E", 60, 24, 70, 34),
+					textRun("F", 110, 24, 120, 34),
+					textRun("G", 10, 38, 20, 48),
+					textRun("H", 60, 38, 70, 48),
+					textRun("I", 110, 38, 120, 48),
+					codeLine1,
+					codeLine2,
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	want := []document.Diagnostic{
+		{
+			Code:    document.DiagnosticTableLikeText,
+			Page:    1,
+			Message: "table-like layout was preserved as plain text",
+		},
+		{
+			Code:    document.DiagnosticCodeLikeText,
+			Page:    1,
+			Message: "code-like layout was preserved as plain text",
+		},
+	}
+	if !reflect.DeepEqual(result.Diagnostics, want) {
+		t.Fatalf("diagnostics = %#v, want %#v", result.Diagnostics, want)
+	}
+}
+
+func TestBasicAnalyzerReportsAmbiguousLinkAnnotations(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("link", 10, 10, 40, 20),
+				},
+				Links: []document.LinkAnnotation{
+					{
+						Bounds:      document.Rectangle{Left: 8, Top: 8, Right: 42, Bottom: 22},
+						Destination: "https://example.test/one",
+					},
+					{
+						Bounds:      document.Rectangle{Left: 8, Top: 8, Right: 42, Bottom: 22},
+						Destination: "https://example.test/two",
+					},
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got, want := len(result.Diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count = %d, want %d", got, want)
+	}
+	if result.Diagnostics[0].Code != document.DiagnosticAmbiguousLink {
+		t.Fatalf(
+			"diagnostic code = %q, want %q",
+			result.Diagnostics[0].Code,
+			document.DiagnosticAmbiguousLink,
+		)
+	}
+	paragraph := result.Blocks[0].(*document.Paragraph)
+	if len(paragraph.Links) != 0 {
+		t.Fatalf("paragraph links = %#v, want none", paragraph.Links)
+	}
+}
+
 func TestBasicAnalyzerSuppressesRepeatedHeadersAndFooters(t *testing.T) {
 	t.Parallel()
 

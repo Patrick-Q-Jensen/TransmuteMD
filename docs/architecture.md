@@ -92,6 +92,12 @@ annotations are normalized to engine-neutral rectangles and absolute `http`,
 `https`, or `mailto` destinations; backend annotation handles and unsupported
 actions remain inside the adapter.
 
+Non-fatal diagnostics are engine-neutral records with a stable code, optional
+page number, and user-facing message. Extraction records unsupported external
+link targets; analysis preserves those records and adds warnings for
+ambiguous link geometry and conservative table-like or code-like text
+fallbacks.
+
 ### Analysis
 
 The analyzer converts physical layout into semantic content. Responsibilities
@@ -168,6 +174,10 @@ empty unless reliable source metadata becomes available. A single monospaced
 line does not qualify, and inline code inference is separate work. These
 constraints are recorded in
 [ADR-0005](decisions/0005-preserve-ambiguous-tables-and-code-as-text.md).
+The initial analyzer reports table-like text only after three adjacent lines
+show multiple large intra-line gaps. It reports code-like text only after two
+aligned adjacent lines consistently use recognized monospaced font names.
+Both remain ordinary text.
 
 ### Rendering
 
@@ -282,6 +292,11 @@ contents, close it, then rename it into place. Existing files are preserved
 unless replacement is explicitly enabled, and temporary files are removed on
 all reported failure paths.
 
+After a successful commit, the converter returns semantic diagnostics to the
+CLI. The CLI writes each as a warning on standard error; diagnostics never
+enter Markdown, alter the success exit code, or become visible before output
+has committed.
+
 The CLI closes the input and process-scoped PDFium runtime before delegating
 the final output commit. Cleanup failure therefore prevents both file and
 standard-output publication rather than reporting failure after visible
@@ -297,7 +312,8 @@ adapters normalize their engine coordinates to this convention.
 
 ```go
 type Layout struct {
-	Pages []Page
+	Pages       []Page
+	Diagnostics []Diagnostic
 }
 
 type Page struct {
@@ -321,7 +337,8 @@ retain extraction order; the analyzer, rather than the extractor, determines
 reading order. Style fields use zero values when unavailable so engines are
 not required to expose backend-specific font data.
 
-The semantic model is an ordered set of blocks owned by `internal/document`.
+The semantic model is an ordered set of blocks and non-fatal diagnostics owned
+by `internal/document`.
 It defines plain paragraphs, validated level 1 through 6 headings, and flat
 ordered or unordered lists of plain-text items. Ordered lists retain their
 starting number. Paragraphs, headings, and list items may contain validated,

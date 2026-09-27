@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/app"
+	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/document"
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/extract"
 )
 
@@ -29,12 +30,12 @@ func TestRunnerWritesStdoutAfterClosingResources(t *testing.T) {
 					ctx context.Context,
 					source extract.Source,
 					destination app.Destination,
-				) error {
+				) (app.Result, error) {
 					events = append(events, "convert")
 					if source.Size() == 0 {
 						t.Fatal("source size is zero")
 					}
-					return destination.Commit(ctx, []byte("Markdown\n"))
+					return app.Result{}, destination.Commit(ctx, []byte("Markdown\n"))
 				}), closerFunc(func() error {
 					events = append(events, "close")
 					return nil
@@ -59,6 +60,49 @@ func TestRunnerWritesStdoutAfterClosingResources(t *testing.T) {
 	}
 	if want := []string{"convert", "close", "write"}; !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %#v, want %#v", events, want)
+	}
+}
+
+func TestRunnerWritesWarningsAfterSuccessfulOutput(t *testing.T) {
+	t.Parallel()
+
+	input := writePDFInput(t, "report.pdf")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := newTestRunner(
+		t,
+		func(context.Context) (Converter, io.Closer, error) {
+			return converterFunc(func(
+				ctx context.Context,
+				_ extract.Source,
+				destination app.Destination,
+			) (app.Result, error) {
+				if err := destination.Commit(ctx, []byte("Markdown\n")); err != nil {
+					return app.Result{}, err
+				}
+				return app.Result{Diagnostics: []document.Diagnostic{
+					{
+						Code:    document.DiagnosticTableLikeText,
+						Page:    2,
+						Message: "table-like layout was preserved as plain text",
+					},
+				}}, nil
+			}), closerFunc(func() error { return nil }), nil
+		},
+		&stdout,
+		&stderr,
+	)
+
+	code := runner.Run(context.Background(), []string{input, "--output", "-"})
+	if code != ExitSuccess {
+		t.Fatalf("Run() exit code = %d, want %d", code, ExitSuccess)
+	}
+	if got, want := stdout.String(), "Markdown\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+	wantWarning := "transmutemd: warning: page 2: table-like layout was preserved as plain text\n"
+	if got := stderr.String(); got != wantWarning {
+		t.Fatalf("stderr = %q, want %q", got, wantWarning)
 	}
 }
 
@@ -229,8 +273,8 @@ func TestRunnerMapsConversionAndCancellationErrors(t *testing.T) {
 						context.Context,
 						extract.Source,
 						app.Destination,
-					) error {
-						return test.err
+					) (app.Result, error) {
+						return app.Result{}, test.err
 					}), closerFunc(func() error { return nil }), nil
 				},
 				&stdout,
@@ -266,8 +310,8 @@ func TestRunnerDoesNotCreateFileAfterConversionFailure(t *testing.T) {
 				context.Context,
 				extract.Source,
 				app.Destination,
-			) error {
-				return errors.New("conversion failed")
+			) (app.Result, error) {
+				return app.Result{}, errors.New("conversion failed")
 			}), closerFunc(func() error { return nil }), nil
 		},
 		io.Discard,
@@ -296,8 +340,8 @@ func TestRunnerDoesNotWriteWhenResourceCleanupFails(t *testing.T) {
 				ctx context.Context,
 				_ extract.Source,
 				destination app.Destination,
-			) error {
-				return destination.Commit(ctx, []byte("must not be written"))
+			) (app.Result, error) {
+				return app.Result{}, destination.Commit(ctx, []byte("must not be written"))
 			}), closerFunc(func() error { return closeErr }), nil
 		},
 		&stdout,
@@ -401,8 +445,8 @@ func successfulRunner(t *testing.T, content string) *Runner {
 				ctx context.Context,
 				_ extract.Source,
 				destination app.Destination,
-			) error {
-				return destination.Commit(ctx, []byte(content))
+			) (app.Result, error) {
+				return app.Result{}, destination.Commit(ctx, []byte(content))
 			}), closerFunc(func() error { return nil }), nil
 		},
 		io.Discard,
@@ -432,13 +476,17 @@ func assertFileContent(t *testing.T, path, want string) {
 	}
 }
 
-type converterFunc func(context.Context, extract.Source, app.Destination) error
+type converterFunc func(
+	context.Context,
+	extract.Source,
+	app.Destination,
+) (app.Result, error)
 
-func (function converterFunc) Convert(
+func (function converterFunc) ConvertWithResult(
 	ctx context.Context,
 	source extract.Source,
 	destination app.Destination,
-) error {
+) (app.Result, error) {
 	return function(ctx, source, destination)
 }
 

@@ -12,7 +12,8 @@ const maximumOrderedListMarker = 999_999_999
 
 // Document contains semantic blocks in reading order.
 type Document struct {
-	Blocks []Block
+	Blocks      []Block
+	Diagnostics []Diagnostic
 }
 
 // Validate checks the semantic document invariants required by renderers.
@@ -25,7 +26,7 @@ func (d Document) Validate() error {
 			return fmt.Errorf("block %d: %w", i+1, err)
 		}
 	}
-	return nil
+	return validateDiagnostics(d.Diagnostics)
 }
 
 // Block is semantic content that can be rendered. Implementations are defined

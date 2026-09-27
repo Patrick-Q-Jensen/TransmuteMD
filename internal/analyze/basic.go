@@ -65,18 +65,28 @@ func (*BasicAnalyzer) Analyze(
 			return nil, fmt.Errorf("analyze page %d: %w", page.Number, err)
 		}
 
-		lines, err := analyzePageLines(ctx, page)
+		lines, diagnostics, err := analyzePageLines(ctx, page)
 		if err != nil {
 			return nil, fmt.Errorf("analyze page %d: %w", page.Number, err)
 		}
-		pages = append(pages, analyzedPage{page: page, lines: lines})
+		pages = append(pages, analyzedPage{
+			page:        page,
+			lines:       lines,
+			diagnostics: diagnostics,
+		})
 	}
 	if err := suppressRepeatedPageFurniture(ctx, pages); err != nil {
 		return nil, fmt.Errorf("detect repeated page headers and footers: %w", err)
 	}
 
 	result := &document.Document{}
+	result.Diagnostics = slices.Clone(layout.Diagnostics)
 	for _, page := range pages {
+		result.Diagnostics = append(result.Diagnostics, page.diagnostics...)
+		result.Diagnostics = append(
+			result.Diagnostics,
+			structureDiagnostics(page.page.Number, page.lines)...,
+		)
 		blocks, err := groupBlocks(ctx, page.lines)
 		if err != nil {
 			return nil, fmt.Errorf("analyze page %d: %w", page.page.Number, err)
@@ -109,26 +119,33 @@ type textLine struct {
 }
 
 type analyzedPage struct {
-	page  document.Page
-	lines []textLine
+	page        document.Page
+	lines       []textLine
+	diagnostics []document.Diagnostic
 }
 
-func analyzePageLines(ctx context.Context, page document.Page) ([]textLine, error) {
+func analyzePageLines(
+	ctx context.Context,
+	page document.Page,
+) ([]textLine, []document.Diagnostic, error) {
 	runs := make([]orderedRun, 0, len(page.TextRuns))
+	ambiguousLink := false
 	for index, run := range page.TextRuns {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		text := normalizeRunText(run)
 		if text == "" {
 			continue
 		}
+		destination, ambiguous := linkDestination(run.Bounds, page.Links)
+		ambiguousLink = ambiguousLink || ambiguous
 		runs = append(runs, orderedRun{
 			run:             run,
 			text:            text,
 			index:           index,
-			linkDestination: linkDestination(run.Bounds, page.Links),
+			linkDestination: destination,
 		})
 	}
 
@@ -146,16 +163,24 @@ func analyzePageLines(ctx context.Context, page document.Page) ([]textLine, erro
 
 	for index := range lines {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if err := lines[index].finish(ctx); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	slices.SortStableFunc(lines, compareLines)
 	lines = orderColumns(lines)
 
-	return lines, nil
+	var diagnostics []document.Diagnostic
+	if ambiguousLink {
+		diagnostics = append(diagnostics, document.Diagnostic{
+			Code:    document.DiagnosticAmbiguousLink,
+			Page:    page.Number,
+			Message: "overlapping link annotations were preserved as plain text",
+		})
+	}
+	return lines, diagnostics, nil
 }
 
 func normalizeRunText(run document.TextRun) string {
@@ -183,7 +208,7 @@ func normalizeRunText(run document.TextRun) string {
 func linkDestination(
 	bounds document.Rectangle,
 	links []document.LinkAnnotation,
-) string {
+) (string, bool) {
 	centerX := (bounds.Left + bounds.Right) / 2
 	centerY := (bounds.Top + bounds.Bottom) / 2
 	destination := ""
@@ -193,11 +218,95 @@ func linkDestination(
 			continue
 		}
 		if destination != "" && destination != link.Destination {
-			return ""
+			return "", true
 		}
 		destination = link.Destination
 	}
-	return destination
+	return destination, false
+}
+
+func structureDiagnostics(page int, lines []textLine) []document.Diagnostic {
+	var diagnostics []document.Diagnostic
+	if hasTableLikeRegion(lines) {
+		diagnostics = append(diagnostics, document.Diagnostic{
+			Code:    document.DiagnosticTableLikeText,
+			Page:    page,
+			Message: "table-like layout was preserved as plain text",
+		})
+	}
+	if hasCodeLikeRegion(lines) {
+		diagnostics = append(diagnostics, document.Diagnostic{
+			Code:    document.DiagnosticCodeLikeText,
+			Page:    page,
+			Message: "code-like layout was preserved as plain text",
+		})
+	}
+	return diagnostics
+}
+
+func hasTableLikeRegion(lines []textLine) bool {
+	consecutive := 0
+	for _, line := range lines {
+		if lineLargeGapCount(line) >= 2 {
+			consecutive++
+			if consecutive >= 3 {
+				return true
+			}
+		} else {
+			consecutive = 0
+		}
+	}
+	return false
+}
+
+func lineLargeGapCount(line textLine) int {
+	count := 0
+	threshold := line.scale() * 2
+	for index := 1; index < len(line.runs); index++ {
+		if line.runs[index].run.Bounds.Left-
+			line.runs[index-1].run.Bounds.Right > threshold {
+			count++
+		}
+	}
+	return count
+}
+
+func hasCodeLikeRegion(lines []textLine) bool {
+	consecutive := 0
+	previousLeft := 0.0
+	for _, line := range lines {
+		if !lineUsesMonospacedFont(line) {
+			consecutive = 0
+			continue
+		}
+		if consecutive > 0 &&
+			math.Abs(line.left-previousLeft) > line.scale()*paragraphIndentRatio {
+			consecutive = 0
+		}
+		consecutive++
+		if consecutive >= 2 {
+			return true
+		}
+		previousLeft = line.left
+	}
+	return false
+}
+
+func lineUsesMonospacedFont(line textLine) bool {
+	hasText := false
+	for _, run := range line.runs {
+		if strings.TrimSpace(run.text) == "" {
+			continue
+		}
+		name := strings.ToLower(run.run.Style.FontName)
+		if !strings.Contains(name, "mono") &&
+			!strings.Contains(name, "courier") &&
+			!strings.Contains(name, "consolas") {
+			return false
+		}
+		hasText = true
+	}
+	return hasText
 }
 
 func compareRunsVertically(left, right orderedRun) int {

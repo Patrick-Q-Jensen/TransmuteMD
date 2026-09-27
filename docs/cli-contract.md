@@ -83,7 +83,7 @@ When `--output <path>` is supplied:
 - the output path must not resolve to the input file.
 
 `--output -` writes Markdown to standard output. Successful file conversion is
-otherwise quiet, allowing scripts to rely on output and exit status.
+otherwise quiet unless the converter reports a non-fatal structure warning.
 
 Markdown output is UTF-8 with LF line endings on every platform.
 
@@ -106,6 +106,9 @@ Temporary files must be removed after both successful and failed operations.
 - Markdown is written only to the selected output.
 - Errors and diagnostics are written to standard error.
 - Successful conversion prints no confirmation message.
+- A successful conversion may print `warning:` diagnostics for uncertain or
+  omitted structure. Warnings identify the page when known, do not alter
+  Markdown, and retain exit code `0`.
 - Errors identify the relevant path and operation without exposing document
   content or internal stack traces.
 - The initial CLI has no interactive prompts and no progress display.
@@ -159,3 +162,4 @@ The initial CLI test suite must cover:
 - no partial file or standard output after conversion failure;
 - interruption cleanup and exit code;
 - separation of Markdown on stdout from diagnostics on stderr.
+- successful output accompanied by non-fatal structure warnings on stderr.

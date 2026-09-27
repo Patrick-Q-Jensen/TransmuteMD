@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/analyze"
+	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/document"
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/extract"
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/render"
 )
@@ -35,6 +36,11 @@ type Converter struct {
 	extractor extract.Extractor
 	analyzer  analyze.Analyzer
 	renderer  render.Renderer
+}
+
+// Result describes a successfully committed conversion.
+type Result struct {
+	Diagnostics []document.Diagnostic
 }
 
 // NewConverter creates an engine-neutral conversion pipeline.
@@ -66,59 +72,72 @@ func (converter *Converter) Convert(
 	source extract.Source,
 	destination Destination,
 ) error {
+	_, err := converter.ConvertWithResult(ctx, source, destination)
+	return err
+}
+
+// ConvertWithResult runs the conversion pipeline and returns non-fatal
+// diagnostics after output has committed successfully.
+func (converter *Converter) ConvertWithResult(
+	ctx context.Context,
+	source extract.Source,
+	destination Destination,
+) (Result, error) {
 	if converter == nil || converter.extractor == nil {
-		return errNilExtractor
+		return Result{}, errNilExtractor
 	}
 	if converter.analyzer == nil {
-		return errNilAnalyzer
+		return Result{}, errNilAnalyzer
 	}
 	if converter.renderer == nil {
-		return errNilRenderer
+		return Result{}, errNilRenderer
 	}
 	if source == nil {
-		return errNilSource
+		return Result{}, errNilSource
 	}
 	if destination == nil {
-		return errNilDestination
+		return Result{}, errNilDestination
 	}
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("convert document: %w", err)
+		return Result{}, fmt.Errorf("convert document: %w", err)
 	}
 
 	layout, err := converter.extractor.Extract(ctx, source)
 	if err != nil {
-		return fmt.Errorf("extract with %s: %w", converter.extractor.Name(), err)
+		return Result{}, fmt.Errorf("extract with %s: %w", converter.extractor.Name(), err)
 	}
 	if layout == nil {
-		return fmt.Errorf("extract with %s: %w", converter.extractor.Name(), errNilLayout)
+		return Result{}, fmt.Errorf("extract with %s: %w", converter.extractor.Name(), errNilLayout)
 	}
 	if err := layout.Validate(); err != nil {
-		return fmt.Errorf("validate extracted layout: %w", err)
+		return Result{}, fmt.Errorf("validate extracted layout: %w", err)
 	}
 
 	semantic, err := converter.analyzer.Analyze(ctx, layout)
 	if err != nil {
-		return fmt.Errorf("analyze document: %w", err)
+		return Result{}, fmt.Errorf("analyze document: %w", err)
 	}
 	if semantic == nil {
-		return errNilDocument
+		return Result{}, errNilDocument
 	}
 	if err := semantic.Validate(); err != nil {
-		return fmt.Errorf("validate analyzed document: %w", err)
+		return Result{}, fmt.Errorf("validate analyzed document: %w", err)
 	}
 	if len(semantic.Blocks) == 0 {
-		return ErrNoExtractableText
+		return Result{}, ErrNoExtractableText
 	}
 
 	var rendered bytes.Buffer
 	if err := converter.renderer.Render(ctx, semantic, &rendered); err != nil {
-		return fmt.Errorf("render document: %w", err)
+		return Result{}, fmt.Errorf("render document: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("commit output: %w", err)
+		return Result{}, fmt.Errorf("commit output: %w", err)
 	}
 	if err := destination.Commit(ctx, rendered.Bytes()); err != nil {
-		return fmt.Errorf("commit output: %w: %w", ErrOutput, err)
+		return Result{}, fmt.Errorf("commit output: %w: %w", ErrOutput, err)
 	}
-	return nil
+	return Result{
+		Diagnostics: append([]document.Diagnostic(nil), semantic.Diagnostics...),
+	}, nil
 }

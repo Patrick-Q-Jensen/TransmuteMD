@@ -54,6 +54,39 @@ func TestConverterCommitsCompletedPipelineOutput(t *testing.T) {
 	}
 }
 
+func TestConverterReturnsDiagnosticsAfterCommit(t *testing.T) {
+	t.Parallel()
+
+	semantic := validDocument()
+	semantic.Diagnostics = []document.Diagnostic{
+		{
+			Code:    document.DiagnosticCodeLikeText,
+			Page:    1,
+			Message: "code-like layout was preserved as plain text",
+		},
+	}
+	converter, err := app.NewConverter(
+		extractorStub{layout: validLayout()},
+		analyzerStub{document: semantic},
+		rendererStub{content: "content"},
+	)
+	if err != nil {
+		t.Fatalf("NewConverter() returned an unexpected error: %v", err)
+	}
+
+	result, err := converter.ConvertWithResult(
+		context.Background(),
+		bytes.NewReader([]byte("source")),
+		&destinationStub{},
+	)
+	if err != nil {
+		t.Fatalf("ConvertWithResult() returned an unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(result.Diagnostics, semantic.Diagnostics) {
+		t.Fatalf("diagnostics = %#v, want %#v", result.Diagnostics, semantic.Diagnostics)
+	}
+}
+
 func TestConverterDoesNotExposePartialRendererOutput(t *testing.T) {
 	t.Parallel()
 
