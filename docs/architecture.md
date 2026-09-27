@@ -139,6 +139,12 @@ flow boundaries prevent paragraphs and lists from merging across columns.
 Ambiguous layouts retain geometric row order rather than forcing a column
 interpretation.
 
+Repeated page furniture is detected across documents with at least three
+pages. Exact case-normalized text signatures in the outer 12 percent of a
+page, including digit-normalized page numbers, are suppressed only when they
+occur in the same header or footer alignment on at least three pages and
+two-thirds of the document. Repeated text in the body is preserved.
+
 ### Rendering
 
 The renderer converts the semantic document to Markdown. It owns Markdown

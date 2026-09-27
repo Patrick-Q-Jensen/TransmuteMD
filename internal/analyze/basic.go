@@ -27,6 +27,8 @@ const (
 	columnGutterScaleRatio  = 1.5
 	columnGutterWidthRatio  = 0.03
 	minimumColumnLines      = 2
+	pageFurnitureBandRatio  = 0.12
+	minimumFurniturePages   = 3
 )
 
 var errNilLayout = errors.New("layout must not be nil")
@@ -57,17 +59,29 @@ func (*BasicAnalyzer) Analyze(
 		return nil, fmt.Errorf("validate layout for analysis: %w", err)
 	}
 
-	result := &document.Document{}
+	pages := make([]analyzedPage, 0, len(layout.Pages))
 	for _, page := range layout.Pages {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("analyze page %d: %w", page.Number, err)
 		}
 
-		paragraphs, err := analyzePage(ctx, page)
+		lines, err := analyzePageLines(ctx, page)
 		if err != nil {
 			return nil, fmt.Errorf("analyze page %d: %w", page.Number, err)
 		}
-		result.Blocks = append(result.Blocks, paragraphs...)
+		pages = append(pages, analyzedPage{page: page, lines: lines})
+	}
+	if err := suppressRepeatedPageFurniture(ctx, pages); err != nil {
+		return nil, fmt.Errorf("detect repeated page headers and footers: %w", err)
+	}
+
+	result := &document.Document{}
+	for _, page := range pages {
+		blocks, err := groupBlocks(ctx, page.lines)
+		if err != nil {
+			return nil, fmt.Errorf("analyze page %d: %w", page.page.Number, err)
+		}
+		result.Blocks = append(result.Blocks, blocks...)
 	}
 
 	if err := result.Validate(); err != nil {
@@ -92,7 +106,12 @@ type textLine struct {
 	breakBefore bool
 }
 
-func analyzePage(ctx context.Context, page document.Page) ([]document.Block, error) {
+type analyzedPage struct {
+	page  document.Page
+	lines []textLine
+}
+
+func analyzePageLines(ctx context.Context, page document.Page) ([]textLine, error) {
 	runs := make([]orderedRun, 0, len(page.TextRuns))
 	for index, run := range page.TextRuns {
 		if err := ctx.Err(); err != nil {
@@ -129,7 +148,7 @@ func analyzePage(ctx context.Context, page document.Page) ([]document.Block, err
 	slices.SortStableFunc(lines, compareLines)
 	lines = orderColumns(lines)
 
-	return groupBlocks(ctx, lines)
+	return lines, nil
 }
 
 func normalizeRunText(run document.TextRun) string {
@@ -422,6 +441,104 @@ func lineRange(lines []textLine) (float64, float64) {
 		bottom = math.Max(bottom, line.bottom)
 	}
 	return top, bottom
+}
+
+func suppressRepeatedPageFurniture(
+	ctx context.Context,
+	pages []analyzedPage,
+) error {
+	if len(pages) < minimumFurniturePages {
+		return nil
+	}
+
+	counts := make(map[string]int)
+	for _, page := range pages {
+		seen := make(map[string]struct{})
+		for _, line := range page.lines {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			signature, ok := pageFurnitureSignature(page.page, line)
+			if !ok {
+				continue
+			}
+			seen[signature] = struct{}{}
+		}
+		for signature := range seen {
+			counts[signature]++
+		}
+	}
+
+	repeated := make(map[string]struct{})
+	for signature, count := range counts {
+		if count >= minimumFurniturePages && count*3 >= len(pages)*2 {
+			repeated[signature] = struct{}{}
+		}
+	}
+	if len(repeated) == 0 {
+		return nil
+	}
+
+	for pageIndex := range pages {
+		filtered := pages[pageIndex].lines[:0]
+		for _, line := range pages[pageIndex].lines {
+			signature, ok := pageFurnitureSignature(pages[pageIndex].page, line)
+			if _, suppress := repeated[signature]; ok && suppress {
+				continue
+			}
+			filtered = append(filtered, line)
+		}
+		pages[pageIndex].lines = filtered
+	}
+	return nil
+}
+
+func pageFurnitureSignature(page document.Page, line textLine) (string, bool) {
+	zone := ""
+	switch {
+	case line.bottom <= page.Height*pageFurnitureBandRatio:
+		zone = "header"
+	case line.top >= page.Height*(1-pageFurnitureBandRatio):
+		zone = "footer"
+	default:
+		return "", false
+	}
+
+	center := (line.left + line.right) / 2
+	alignment := "center"
+	if center < page.Width/3 {
+		alignment = "left"
+	} else if center > page.Width*2/3 {
+		alignment = "right"
+	}
+	text := normalizeFurnitureText(line.text)
+	if text == "" {
+		return "", false
+	}
+	return zone + "\x00" + alignment + "\x00" + text, true
+}
+
+func normalizeFurnitureText(text string) string {
+	var result strings.Builder
+	inDigits := false
+	for _, value := range strings.ToLower(strings.TrimSpace(text)) {
+		if unicode.IsDigit(value) {
+			if !inDigits {
+				result.WriteByte('#')
+			}
+			inDigits = true
+			continue
+		}
+		inDigits = false
+		if unicode.IsSpace(value) {
+			if result.Len() > 0 {
+				result.WriteByte(' ')
+			}
+			continue
+		}
+		result.WriteRune(value)
+	}
+	return strings.TrimSpace(result.String())
 }
 
 func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error) {

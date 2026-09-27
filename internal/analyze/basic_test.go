@@ -3,6 +3,7 @@ package analyze_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -558,6 +559,58 @@ func TestBasicAnalyzerLeavesAmbiguousColumnsInRowOrder(t *testing.T) {
 		t.Fatalf("Analyze() returned an unexpected error: %v", err)
 	}
 	want := []string{"Left right"}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paragraphs = %#v, want %#v", got, want)
+	}
+}
+
+func TestBasicAnalyzerSuppressesRepeatedHeadersAndFooters(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{}
+	for page := 1; page <= 3; page++ {
+		layout.Pages = append(layout.Pages, document.Page{
+			Number: page,
+			Width:  220,
+			Height: 220,
+			TextRuns: []document.TextRun{
+				textRun("Quarterly report", 10, 8, 110, 18),
+				textRun(fmt.Sprintf("Body page %d.", page), 10, 60, 100, 70),
+				textRun(fmt.Sprintf("Page %d", page), 90, 202, 130, 212),
+			},
+		})
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	want := []string{"Body page 1.", "Body page 2.", "Body page 3."}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paragraphs = %#v, want %#v", got, want)
+	}
+}
+
+func TestBasicAnalyzerPreservesRepeatedBodyText(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{}
+	for page := 1; page <= 3; page++ {
+		layout.Pages = append(layout.Pages, document.Page{
+			Number: page,
+			Width:  220,
+			Height: 220,
+			TextRuns: []document.TextRun{
+				textRun("Confidential", 70, 100, 150, 110),
+			},
+		})
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	want := []string{"Confidential", "Confidential", "Confidential"}
 	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
 		t.Fatalf("paragraphs = %#v, want %#v", got, want)
 	}
