@@ -28,12 +28,33 @@ func TestLayoutValidate(t *testing.T) {
 						},
 					},
 				},
+				Links: []document.LinkAnnotation{
+					{
+						Bounds:      document.Rectangle{Left: 72, Top: 72, Right: 150, Bottom: 84},
+						Destination: "https://example.test",
+					},
+				},
 			},
 		},
 	}
 
 	if err := layout.Validate(); err != nil {
 		t.Fatalf("Validate() returned an unexpected error: %v", err)
+	}
+}
+
+func TestPageValidateRejectsInvalidLink(t *testing.T) {
+	t.Parallel()
+
+	page := document.Page{
+		Width:  612,
+		Height: 792,
+		Links: []document.LinkAnnotation{
+			{Bounds: document.Rectangle{Left: 1, Top: 1, Right: 2, Bottom: 2}},
+		},
+	}
+	if err := page.Validate(); err == nil {
+		t.Fatal("Validate() returned nil for a link without a destination")
 	}
 }
 

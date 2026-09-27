@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
+	"strings"
 
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/document"
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/extract"
+	"github.com/klippa-app/go-pdfium/enums"
 	"github.com/klippa-app/go-pdfium/references"
 	"github.com/klippa-app/go-pdfium/requests"
 	"github.com/klippa-app/go-pdfium/responses"
@@ -25,6 +28,13 @@ var (
 	errNilPageSize       = errors.New("PDFium returned no page size")
 	errNilStructuredText = errors.New("PDFium returned no structured text")
 	errNilCharacter      = errors.New("PDFium returned a nil text character")
+	errNilAnnotCount     = errors.New("PDFium returned no annotation count")
+	errNilAnnotation     = errors.New("PDFium returned no annotation")
+	errNilAnnotSubtype   = errors.New("PDFium returned no annotation subtype")
+	errNilAnnotLink      = errors.New("PDFium returned no annotation link")
+	errNilLinkAction     = errors.New("PDFium returned no link action")
+	errNilActionType     = errors.New("PDFium returned no action type")
+	errNilAnnotRect      = errors.New("PDFium returned no annotation rectangle")
 	errMismatchedPage    = errors.New("PDFium returned data for an unexpected page")
 )
 
@@ -171,12 +181,175 @@ func extractPage(
 		}
 	}
 
+	links, err := extractPageLinks(worker, pdf, index, size.Height)
+	if err != nil {
+		return document.Page{}, fmt.Errorf("extract links: %w", err)
+	}
+
 	return document.Page{
 		Number:   index + 1,
 		Width:    size.Width,
 		Height:   size.Height,
 		TextRuns: runs,
+		Links:    links,
 	}, nil
+}
+
+func extractPageLinks(
+	worker instance,
+	pdf references.FPDF_DOCUMENT,
+	index int,
+	pageHeight float64,
+) ([]document.LinkAnnotation, error) {
+	page := requests.Page{ByIndex: &requests.PageByIndex{
+		Document: pdf,
+		Index:    index,
+	}}
+	count, err := worker.FPDFPage_GetAnnotCount(&requests.FPDFPage_GetAnnotCount{
+		Page: page,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get annotation count: %w", err)
+	}
+	if count == nil {
+		return nil, errNilAnnotCount
+	}
+
+	links := make([]document.LinkAnnotation, 0)
+	for annotationIndex := range count.Count {
+		response, err := worker.FPDFPage_GetAnnot(&requests.FPDFPage_GetAnnot{
+			Page:  page,
+			Index: annotationIndex,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("annotation %d: get: %w", annotationIndex+1, err)
+		}
+		if response == nil || response.Annotation == "" {
+			return nil, fmt.Errorf("annotation %d: %w", annotationIndex+1, errNilAnnotation)
+		}
+
+		link, include, linkErr := extractAnnotationLink(
+			worker,
+			pdf,
+			response.Annotation,
+			pageHeight,
+		)
+		_, closeErr := worker.FPDFPage_CloseAnnot(&requests.FPDFPage_CloseAnnot{
+			Annotation: response.Annotation,
+		})
+		if closeErr != nil {
+			linkErr = errors.Join(linkErr, fmt.Errorf("close: %w", closeErr))
+		}
+		if linkErr != nil {
+			return nil, fmt.Errorf("annotation %d: %w", annotationIndex+1, linkErr)
+		}
+		if include {
+			links = append(links, link)
+		}
+	}
+	return links, nil
+}
+
+func extractAnnotationLink(
+	worker instance,
+	pdf references.FPDF_DOCUMENT,
+	annotation references.FPDF_ANNOTATION,
+	pageHeight float64,
+) (document.LinkAnnotation, bool, error) {
+	subtype, err := worker.FPDFAnnot_GetSubtype(&requests.FPDFAnnot_GetSubtype{
+		Annotation: annotation,
+	})
+	if err != nil {
+		return document.LinkAnnotation{}, false, fmt.Errorf("get subtype: %w", err)
+	}
+	if subtype == nil {
+		return document.LinkAnnotation{}, false, errNilAnnotSubtype
+	}
+	if subtype.Subtype != enums.FPDF_ANNOT_SUBTYPE_LINK {
+		return document.LinkAnnotation{}, false, nil
+	}
+
+	link, err := worker.FPDFAnnot_GetLink(&requests.FPDFAnnot_GetLink{
+		Annotation: annotation,
+	})
+	if err != nil {
+		return document.LinkAnnotation{}, false, fmt.Errorf("get link: %w", err)
+	}
+	if link == nil || link.Link == "" {
+		return document.LinkAnnotation{}, false, errNilAnnotLink
+	}
+	action, err := worker.FPDFLink_GetAction(&requests.FPDFLink_GetAction{
+		Link: link.Link,
+	})
+	if err != nil {
+		return document.LinkAnnotation{}, false, fmt.Errorf("get action: %w", err)
+	}
+	if action == nil {
+		return document.LinkAnnotation{}, false, errNilLinkAction
+	}
+	if action.Action == nil {
+		return document.LinkAnnotation{}, false, nil
+	}
+	actionType, err := worker.FPDFAction_GetType(&requests.FPDFAction_GetType{
+		Action: *action.Action,
+	})
+	if err != nil {
+		return document.LinkAnnotation{}, false, fmt.Errorf("get action type: %w", err)
+	}
+	if actionType == nil {
+		return document.LinkAnnotation{}, false, errNilActionType
+	}
+	if actionType.Type != enums.FPDF_ACTION_ACTION_URI {
+		return document.LinkAnnotation{}, false, nil
+	}
+	uri, err := worker.FPDFAction_GetURIPath(&requests.FPDFAction_GetURIPath{
+		Document: pdf,
+		Action:   *action.Action,
+	})
+	if err != nil {
+		return document.LinkAnnotation{}, false, fmt.Errorf("get URI: %w", err)
+	}
+	if uri == nil || uri.URIPath == nil || !isReliableExternalURI(*uri.URIPath) {
+		return document.LinkAnnotation{}, false, nil
+	}
+	rect, err := worker.FPDFAnnot_GetRect(&requests.FPDFAnnot_GetRect{
+		Annotation: annotation,
+	})
+	if err != nil {
+		return document.LinkAnnotation{}, false, fmt.Errorf("get rectangle: %w", err)
+	}
+	if rect == nil {
+		return document.LinkAnnotation{}, false, errNilAnnotRect
+	}
+
+	result := document.LinkAnnotation{
+		Bounds: document.Rectangle{
+			Left:   float64(rect.Rect.Left),
+			Top:    pageHeight - float64(rect.Rect.Top),
+			Right:  float64(rect.Rect.Right),
+			Bottom: pageHeight - float64(rect.Rect.Bottom),
+		},
+		Destination: strings.TrimSpace(*uri.URIPath),
+	}
+	if err := result.Validate(); err != nil {
+		return document.LinkAnnotation{}, false, err
+	}
+	return result, true, nil
+}
+
+func isReliableExternalURI(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || !parsed.IsAbs() {
+		return false
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https":
+		return parsed.Host != ""
+	case "mailto":
+		return parsed.Opaque != ""
+	default:
+		return false
+	}
 }
 
 func mapCharacter(

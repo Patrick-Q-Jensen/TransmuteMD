@@ -5,17 +5,24 @@ import (
 	"context"
 	"errors"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/document"
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/extract"
+	"github.com/klippa-app/go-pdfium/enums"
+	"github.com/klippa-app/go-pdfium/references"
 	"github.com/klippa-app/go-pdfium/responses"
+	"github.com/klippa-app/go-pdfium/structs"
 )
 
 func TestExtractorMapsPDFiumLayout(t *testing.T) {
 	t.Parallel()
 
 	log := &eventLog{}
+	action := references.FPDF_ACTION("action")
+	uri := "https://example.test/docs"
 	worker := &instanceStub{
 		log:       log,
 		document:  "document",
@@ -49,6 +56,19 @@ func TestExtractorMapsPDFiumLayout(t *testing.T) {
 					Text: "",
 				},
 			},
+		},
+		annotationCount: 1,
+		annotation:      "annotation",
+		annotationType:  enums.FPDF_ANNOT_SUBTYPE_LINK,
+		annotationLink:  "link",
+		linkAction:      &action,
+		actionType:      enums.FPDF_ACTION_ACTION_URI,
+		actionURI:       &uri,
+		annotationRect: structs.FPDF_FS_RECTF{
+			Left:   70,
+			Top:    722,
+			Right:  90,
+			Bottom: 706,
 		},
 	}
 	runtime := &Runtime{pool: &poolStub{log: log, worker: worker}}
@@ -98,6 +118,19 @@ func TestExtractorMapsPDFiumLayout(t *testing.T) {
 	if run.Style.FontName != "Example Sans" || run.Style.FontWeight != 700 || !run.Style.Italic {
 		t.Errorf("style = %+v, want mapped font name, weight, and italic flag", run.Style)
 	}
+	if got, want := len(page.Links), 1; got != want {
+		t.Fatalf("link count = %d, want %d", got, want)
+	}
+	link := page.Links[0]
+	if link.Destination != uri {
+		t.Errorf("link destination = %q, want %q", link.Destination, uri)
+	}
+	if link.Bounds != (document.Rectangle{Left: 70, Top: 70, Right: 90, Bottom: 86}) {
+		t.Errorf("link bounds = %+v, want normalized PDF rectangle", link.Bounds)
+	}
+	if !slices.Contains(log.snapshot(), "close annotation") {
+		t.Fatal("link annotation was not closed")
+	}
 
 	if worker.pageSizeRequest == nil || worker.pageSizeRequest.Index != 0 {
 		t.Fatalf("page size request = %+v, want page index 0", worker.pageSizeRequest)
@@ -107,6 +140,35 @@ func TestExtractorMapsPDFiumLayout(t *testing.T) {
 	}
 	if worker.textRequest.Mode != "char" || !worker.textRequest.CollectFontInformation {
 		t.Fatalf("structured text request = %+v, want character mode with font information", worker.textRequest)
+	}
+}
+
+func TestExtractAnnotationLinkIgnoresUnsafeURI(t *testing.T) {
+	t.Parallel()
+
+	log := &eventLog{}
+	action := references.FPDF_ACTION("action")
+	uri := "javascript:alert(1)"
+	worker := &instanceStub{
+		log:            log,
+		annotationType: enums.FPDF_ANNOT_SUBTYPE_LINK,
+		annotationLink: "link",
+		linkAction:     &action,
+		actionType:     enums.FPDF_ACTION_ACTION_URI,
+		actionURI:      &uri,
+	}
+
+	_, include, err := extractAnnotationLink(
+		worker,
+		"document",
+		"annotation",
+		792,
+	)
+	if err != nil {
+		t.Fatalf("extractAnnotationLink() returned an unexpected error: %v", err)
+	}
+	if include {
+		t.Fatal("extractAnnotationLink() included an unsafe URI")
 	}
 }
 

@@ -31,6 +31,7 @@ type Page struct {
 	Width    float64
 	Height   float64
 	TextRuns []TextRun
+	Links    []LinkAnnotation
 }
 
 // Validate checks page dimensions and text runs.
@@ -45,6 +46,28 @@ func (p Page) Validate() error {
 		if err := run.Validate(); err != nil {
 			return fmt.Errorf("text run %d: %w", i+1, err)
 		}
+	}
+	for i, link := range p.Links {
+		if err := link.Validate(); err != nil {
+			return fmt.Errorf("link %d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
+// LinkAnnotation is a reliable external link observed in the source layout.
+type LinkAnnotation struct {
+	Bounds      Rectangle
+	Destination string
+}
+
+// Validate checks link annotation geometry and destination.
+func (l LinkAnnotation) Validate() error {
+	if err := l.Bounds.Validate(); err != nil {
+		return fmt.Errorf("bounds: %w", err)
+	}
+	if l.Destination == "" {
+		return errors.New("destination must not be empty")
 	}
 	return nil
 }

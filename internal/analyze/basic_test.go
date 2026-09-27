@@ -363,7 +363,10 @@ func TestBasicAnalyzerDetectsUnorderedListWithContinuation(t *testing.T) {
 	if list.Kind != document.ListKindUnordered || list.Start != 0 {
 		t.Fatalf("list kind/start = %d/%d, want unordered/0", list.Kind, list.Start)
 	}
-	wantItems := []string{"First item wraps onto another line.", "Second item."}
+	wantItems := []document.ListItem{
+		{Text: "First item wraps onto another line."},
+		{Text: "Second item."},
+	}
 	if !reflect.DeepEqual(list.Items, wantItems) {
 		t.Fatalf("list items = %#v, want %#v", list.Items, wantItems)
 	}
@@ -404,7 +407,7 @@ func TestBasicAnalyzerDetectsOrderedListSequence(t *testing.T) {
 	if list.Kind != document.ListKindOrdered || list.Start != 3 {
 		t.Fatalf("list kind/start = %d/%d, want ordered/3", list.Kind, list.Start)
 	}
-	wantItems := []string{"Third item.", "Fourth item."}
+	wantItems := []document.ListItem{{Text: "Third item."}, {Text: "Fourth item."}}
 	if !reflect.DeepEqual(list.Items, wantItems) {
 		t.Fatalf("list items = %#v, want %#v", list.Items, wantItems)
 	}
@@ -564,6 +567,50 @@ func TestBasicAnalyzerLeavesAmbiguousColumnsInRowOrder(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzerMapsLinkAnnotationsToSemanticText(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("Read ", 10, 10, 35, 20),
+					textRun("the", 35, 10, 50, 20),
+					textRun(" docs", 50, 10, 80, 20),
+					textRun(" today.", 80, 10, 120, 20),
+				},
+				Links: []document.LinkAnnotation{
+					{
+						Bounds:      document.Rectangle{Left: 35, Top: 8, Right: 80, Bottom: 22},
+						Destination: "https://example.test/docs",
+					},
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	paragraph, ok := result.Blocks[0].(*document.Paragraph)
+	if !ok {
+		t.Fatalf("block 1 has type %T, want *document.Paragraph", result.Blocks[0])
+	}
+	if got, want := paragraph.Text, "Read the docs today."; got != want {
+		t.Fatalf("paragraph text = %q, want %q", got, want)
+	}
+	wantLinks := []document.TextLink{
+		{Start: 5, End: 13, Destination: "https://example.test/docs"},
+	}
+	if !reflect.DeepEqual(paragraph.Links, wantLinks) {
+		t.Fatalf("paragraph links = %#v, want %#v", paragraph.Links, wantLinks)
+	}
+}
+
 func TestBasicAnalyzerSuppressesRepeatedHeadersAndFooters(t *testing.T) {
 	t.Parallel()
 
@@ -702,6 +749,10 @@ func cloneLayout(layout document.Layout) document.Layout {
 		clone.Pages[index].TextRuns = append(
 			[]document.TextRun(nil),
 			layout.Pages[index].TextRuns...,
+		)
+		clone.Pages[index].Links = append(
+			[]document.LinkAnnotation(nil),
+			layout.Pages[index].Links...,
 		)
 	}
 	return clone

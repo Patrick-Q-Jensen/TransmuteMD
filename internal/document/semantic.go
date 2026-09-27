@@ -3,7 +3,9 @@ package document
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
+	"unicode/utf8"
 )
 
 const maximumOrderedListMarker = 999_999_999
@@ -35,7 +37,8 @@ type Block interface {
 
 // Paragraph is a block of plain text.
 type Paragraph struct {
-	Text string
+	Text  string
+	Links []TextLink
 }
 
 func (*Paragraph) isBlock() {}
@@ -47,13 +50,14 @@ func (p *Paragraph) validate() error {
 	if p.Text == "" {
 		return errors.New("paragraph text must not be empty")
 	}
-	return nil
+	return validateTextLinks(p.Text, p.Links)
 }
 
 // Heading is a section title with a Markdown-compatible level from 1 to 6.
 type Heading struct {
 	Level int
 	Text  string
+	Links []TextLink
 }
 
 func (*Heading) isBlock() {}
@@ -71,7 +75,7 @@ func (h *Heading) validate() error {
 	if strings.ContainsAny(h.Text, "\r\n") {
 		return errors.New("heading text must be a single line")
 	}
-	return nil
+	return validateTextLinks(h.Text, h.Links)
 }
 
 // ListKind identifies the semantic ordering of a list.
@@ -88,7 +92,7 @@ const (
 type List struct {
 	Kind  ListKind
 	Start int
-	Items []string
+	Items []ListItem
 }
 
 func (*List) isBlock() {}
@@ -123,9 +127,54 @@ func (l *List) validate() error {
 		return errors.New("list must contain at least one item")
 	}
 	for index, item := range l.Items {
-		if item == "" {
+		if item.Text == "" {
 			return fmt.Errorf("list item %d text must not be empty", index+1)
 		}
+		if err := validateTextLinks(item.Text, item.Links); err != nil {
+			return fmt.Errorf("list item %d: %w", index+1, err)
+		}
+	}
+	return nil
+}
+
+// ListItem is plain text with optional external links.
+type ListItem struct {
+	Text  string
+	Links []TextLink
+}
+
+// TextLink identifies linked text by UTF-8 byte offsets.
+type TextLink struct {
+	Start       int
+	End         int
+	Destination string
+}
+
+func validateTextLinks(text string, links []TextLink) error {
+	previousEnd := 0
+	for index, link := range links {
+		if link.Start < previousEnd || link.Start < 0 || link.End <= link.Start ||
+			link.End > len(text) {
+			return fmt.Errorf("link %d has invalid or overlapping text range", index+1)
+		}
+		if !utf8.RuneStart(text[link.Start]) ||
+			link.End < len(text) && !utf8.RuneStart(text[link.End]) {
+			return fmt.Errorf("link %d range must align with UTF-8 boundaries", index+1)
+		}
+		if strings.ContainsAny(text[link.Start:link.End], "\r\n") {
+			return fmt.Errorf("link %d text must be a single line", index+1)
+		}
+		destination, err := url.Parse(link.Destination)
+		if err != nil || !destination.IsAbs() {
+			return fmt.Errorf("link %d destination must be an absolute HTTP, HTTPS, or mailto URI", index+1)
+		}
+		scheme := strings.ToLower(destination.Scheme)
+		if scheme != "http" && scheme != "https" && scheme != "mailto" ||
+			(scheme == "http" || scheme == "https") && destination.Host == "" ||
+			scheme == "mailto" && destination.Opaque == "" {
+			return fmt.Errorf("link %d destination must be an absolute HTTP, HTTPS, or mailto URI", index+1)
+		}
+		previousEnd = link.End
 	}
 	return nil
 }

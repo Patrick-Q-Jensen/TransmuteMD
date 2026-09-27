@@ -87,7 +87,10 @@ pages, positioned text, and relevant style information. The PDFium adapter
 owns all PDFium initialization, handles, response types, and cleanup.
 
 Extraction does not decide whether text is a heading, paragraph, or list. It
-reports observed layout information and diagnostics.
+reports observed layout information and diagnostics. Reliable external link
+annotations are normalized to engine-neutral rectangles and absolute `http`,
+`https`, or `mailto` destinations; backend annotation handles and unsupported
+actions remain inside the adapter.
 
 ### Analysis
 
@@ -145,6 +148,11 @@ page, including digit-normalized page numbers, are suppressed only when they
 occur in the same header or footer alignment on at least three pages and
 two-thirds of the document. Repeated text in the body is preserved.
 
+Link annotations are associated with text runs whose centers fall within an
+unambiguous annotation rectangle. Analysis carries the resulting UTF-8 byte
+ranges into paragraphs, headings, and list items. Overlapping annotations
+with different destinations remain plain text rather than guessing.
+
 ### Rendering
 
 The renderer converts the semantic document to Markdown. It owns Markdown
@@ -160,6 +168,8 @@ single-blank-line block separation used for paragraphs. Flat semantic lists
 render with `-` markers or preserved decimal starting numbers. Item text is
 escaped as plain text, and explicit item line breaks receive Markdown
 continuation indentation.
+Validated semantic links render as Markdown links with escaped labels and
+destinations. Only absolute HTTP, HTTPS, and mailto destinations are accepted.
 
 ## 6. Package boundaries
 
@@ -279,6 +289,7 @@ type Page struct {
 	Width    float64
 	Height   float64
 	TextRuns []TextRun
+	Links    []LinkAnnotation
 }
 
 type TextRun struct {
@@ -297,7 +308,9 @@ not required to expose backend-specific font data.
 The semantic model is an ordered set of blocks owned by `internal/document`.
 It defines plain paragraphs, validated level 1 through 6 headings, and flat
 ordered or unordered lists of plain-text items. Ordered lists retain their
-starting number. The model contains no extraction-engine details.
+starting number. Paragraphs, headings, and list items may contain validated,
+non-overlapping external-link ranges. The model contains no extraction-engine
+details.
 
 ## 8. Engine selection and lifecycle
 
@@ -334,7 +347,8 @@ PDFium's bottom-left-origin point coordinates are normalized to the shared
 top-left-origin convention. Character angles are converted from radians to
 degrees, rendered font size is preferred over nominal size, negative unknown
 font weights become zero, and the PDF font italic flag becomes neutral style
-evidence.
+evidence. Link annotations are closed on every path after their URI action and
+rectangle have been inspected.
 
 Wazero is configured to terminate active WebAssembly execution when its
 worker context is cancelled. Acquiring an instance uses the conversion

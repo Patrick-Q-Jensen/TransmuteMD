@@ -10,10 +10,12 @@ import (
 	"testing"
 
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/extract"
+	"github.com/klippa-app/go-pdfium/enums"
 	pdfiumerrors "github.com/klippa-app/go-pdfium/errors"
 	"github.com/klippa-app/go-pdfium/references"
 	"github.com/klippa-app/go-pdfium/requests"
 	"github.com/klippa-app/go-pdfium/responses"
+	"github.com/klippa-app/go-pdfium/structs"
 )
 
 type eventLog struct {
@@ -71,6 +73,14 @@ type instanceStub struct {
 	pageSizeErr      error
 	structuredText   *responses.GetPageTextStructured
 	structuredErr    error
+	annotationCount  int
+	annotation       references.FPDF_ANNOTATION
+	annotationType   enums.FPDF_ANNOTATION_SUBTYPE
+	annotationLink   references.FPDF_LINK
+	linkAction       *references.FPDF_ACTION
+	actionType       enums.FPDF_ACTION_ACTION
+	actionURI        *string
+	annotationRect   structs.FPDF_FS_RECTF
 	closeErr         error
 	killErr          error
 	killDone         chan struct{}
@@ -116,6 +126,61 @@ func (i *instanceStub) GetPageTextStructured(
 	i.log.add("get structured text")
 	i.textRequest = request
 	return i.structuredText, i.structuredErr
+}
+
+func (i *instanceStub) FPDFPage_GetAnnotCount(
+	*requests.FPDFPage_GetAnnotCount,
+) (*responses.FPDFPage_GetAnnotCount, error) {
+	return &responses.FPDFPage_GetAnnotCount{Count: i.annotationCount}, nil
+}
+
+func (i *instanceStub) FPDFPage_GetAnnot(
+	*requests.FPDFPage_GetAnnot,
+) (*responses.FPDFPage_GetAnnot, error) {
+	return &responses.FPDFPage_GetAnnot{Annotation: i.annotation}, nil
+}
+
+func (i *instanceStub) FPDFPage_CloseAnnot(
+	*requests.FPDFPage_CloseAnnot,
+) (*responses.FPDFPage_CloseAnnot, error) {
+	i.log.add("close annotation")
+	return &responses.FPDFPage_CloseAnnot{}, nil
+}
+
+func (i *instanceStub) FPDFAnnot_GetSubtype(
+	*requests.FPDFAnnot_GetSubtype,
+) (*responses.FPDFAnnot_GetSubtype, error) {
+	return &responses.FPDFAnnot_GetSubtype{Subtype: i.annotationType}, nil
+}
+
+func (i *instanceStub) FPDFAnnot_GetLink(
+	*requests.FPDFAnnot_GetLink,
+) (*responses.FPDFAnnot_GetLink, error) {
+	return &responses.FPDFAnnot_GetLink{Link: i.annotationLink}, nil
+}
+
+func (i *instanceStub) FPDFAnnot_GetRect(
+	*requests.FPDFAnnot_GetRect,
+) (*responses.FPDFAnnot_GetRect, error) {
+	return &responses.FPDFAnnot_GetRect{Rect: i.annotationRect}, nil
+}
+
+func (i *instanceStub) FPDFLink_GetAction(
+	*requests.FPDFLink_GetAction,
+) (*responses.FPDFLink_GetAction, error) {
+	return &responses.FPDFLink_GetAction{Action: i.linkAction}, nil
+}
+
+func (i *instanceStub) FPDFAction_GetType(
+	*requests.FPDFAction_GetType,
+) (*responses.FPDFAction_GetType, error) {
+	return &responses.FPDFAction_GetType{Type: i.actionType}, nil
+}
+
+func (i *instanceStub) FPDFAction_GetURIPath(
+	*requests.FPDFAction_GetURIPath,
+) (*responses.FPDFAction_GetURIPath, error) {
+	return &responses.FPDFAction_GetURIPath{URIPath: i.actionURI}, nil
 }
 
 func (i *instanceStub) Close() error {

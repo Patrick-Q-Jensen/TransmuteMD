@@ -91,9 +91,10 @@ func (*BasicAnalyzer) Analyze(
 }
 
 type orderedRun struct {
-	run   document.TextRun
-	text  string
-	index int
+	run             document.TextRun
+	text            string
+	index           int
+	linkDestination string
 }
 
 type textLine struct {
@@ -103,6 +104,7 @@ type textLine struct {
 	left        float64
 	right       float64
 	text        string
+	links       []document.TextLink
 	breakBefore bool
 }
 
@@ -122,7 +124,12 @@ func analyzePageLines(ctx context.Context, page document.Page) ([]textLine, erro
 		if text == "" {
 			continue
 		}
-		runs = append(runs, orderedRun{run: run, text: text, index: index})
+		runs = append(runs, orderedRun{
+			run:             run,
+			text:            text,
+			index:           index,
+			linkDestination: linkDestination(run.Bounds, page.Links),
+		})
 	}
 
 	slices.SortStableFunc(runs, compareRunsVertically)
@@ -171,6 +178,26 @@ func normalizeRunText(run document.TextRun) string {
 		return text
 	}
 	return ""
+}
+
+func linkDestination(
+	bounds document.Rectangle,
+	links []document.LinkAnnotation,
+) string {
+	centerX := (bounds.Left + bounds.Right) / 2
+	centerY := (bounds.Top + bounds.Bottom) / 2
+	destination := ""
+	for _, link := range links {
+		if centerX < link.Bounds.Left || centerX > link.Bounds.Right ||
+			centerY < link.Bounds.Top || centerY > link.Bounds.Bottom {
+			continue
+		}
+		if destination != "" && destination != link.Destination {
+			return ""
+		}
+		destination = link.Destination
+	}
+	return destination
 }
 
 func compareRunsVertically(left, right orderedRun) int {
@@ -290,6 +317,19 @@ func (line *textLine) finish(ctx context.Context) error {
 	var result strings.Builder
 	var previous *orderedRun
 	spacePending := false
+	activeLink := ""
+	activeStart := 0
+	closeLink := func() {
+		if activeLink == "" {
+			return
+		}
+		line.links = append(line.links, document.TextLink{
+			Start:       activeStart,
+			End:         result.Len(),
+			Destination: activeLink,
+		})
+		activeLink = ""
+	}
 	for index := range line.runs {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -303,16 +343,25 @@ func (line *textLine) finish(ctx context.Context) error {
 			continue
 		}
 
-		if result.Len() > 0 &&
+		addSpace := result.Len() > 0 &&
 			(spacePending ||
 				strings.HasPrefix(current.text, " ") ||
-				previous != nil && hasWordGap(previous.run, current.run)) {
+				previous != nil && hasWordGap(previous.run, current.run))
+		if current.linkDestination != activeLink {
+			closeLink()
+		}
+		if addSpace {
 			result.WriteByte(' ')
+		}
+		if current.linkDestination != "" && current.linkDestination != activeLink {
+			activeLink = current.linkDestination
+			activeStart = result.Len()
 		}
 		result.WriteString(text)
 		spacePending = strings.HasSuffix(current.text, " ")
 		previous = current
 	}
+	closeLink()
 	line.text = result.String()
 	return nil
 }
@@ -552,7 +601,8 @@ func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error
 		if len(paragraph) == 0 {
 			return
 		}
-		blocks = append(blocks, &document.Paragraph{Text: joinWrappedLines(paragraph)})
+		text, links := joinWrappedContent(paragraph)
+		blocks = append(blocks, &document.Paragraph{Text: text, Links: links})
 		paragraph = paragraph[:0]
 	}
 	flushList := func() {
@@ -580,6 +630,7 @@ func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error
 			blocks = append(blocks, &document.Heading{
 				Level: headingLevels[index],
 				Text:  line.text,
+				Links: line.links,
 			})
 			continue
 		}
@@ -667,7 +718,7 @@ func (list *pendingList) acceptsContinuation(line textLine) bool {
 }
 
 func (list *pendingList) append(item detectedListItem, line textLine) {
-	line.text = item.text
+	line.setContent(item.text)
 	list.items = append(list.items, []textLine{line})
 }
 
@@ -677,15 +728,38 @@ func (list *pendingList) appendContinuation(line textLine) {
 }
 
 func (list *pendingList) block() *document.List {
-	items := make([]string, len(list.items))
+	items := make([]document.ListItem, len(list.items))
 	for index, lines := range list.items {
-		items[index] = joinWrappedLines(lines)
+		text, links := joinWrappedContent(lines)
+		items[index] = document.ListItem{Text: text, Links: links}
 	}
 	return &document.List{
 		Kind:  list.kind,
 		Start: list.start,
 		Items: items,
 	}
+}
+
+func (line *textLine) setContent(content string) {
+	offset := strings.Index(line.text, content)
+	if offset < 0 {
+		line.text = content
+		line.links = nil
+		return
+	}
+
+	end := offset + len(content)
+	links := line.links[:0]
+	for _, link := range line.links {
+		if link.End <= offset || link.Start >= end {
+			continue
+		}
+		link.Start = max(link.Start, offset) - offset
+		link.End = min(link.End, end) - offset
+		links = append(links, link)
+	}
+	line.text = content
+	line.links = links
 }
 
 func detectListItem(text string) (detectedListItem, bool) {
@@ -894,18 +968,37 @@ func startsNewParagraph(
 }
 
 func joinWrappedLines(lines []textLine) string {
+	text, _ := joinWrappedContent(lines)
+	return text
+}
+
+func joinWrappedContent(lines []textLine) (string, []document.TextLink) {
 	var result strings.Builder
+	var links []document.TextLink
 	for index, line := range lines {
 		text := line.text
 		if index+1 < len(lines) && endsWithSoftHyphen(text, lines[index+1].text) {
 			text = strings.TrimSuffix(strings.TrimSuffix(text, "-"), "\u00ad")
+		}
+		offset := result.Len()
+		for _, link := range line.links {
+			if link.Start >= len(text) {
+				continue
+			}
+			link.End = min(link.End, len(text))
+			if link.End <= link.Start {
+				continue
+			}
+			link.Start += offset
+			link.End += offset
+			links = append(links, link)
 		}
 		result.WriteString(text)
 		if index+1 < len(lines) && !endsWithSoftHyphen(line.text, lines[index+1].text) {
 			result.WriteByte(' ')
 		}
 	}
-	return result.String()
+	return result.String(), links
 }
 
 func endsSentence(text string) bool {

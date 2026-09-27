@@ -167,7 +167,7 @@ Markdown text using the embedded PDFium WebAssembly backend.
 - [x] Detect ordered and unordered lists.
 - [x] Handle multi-column reading order.
 - [x] Detect and reduce repeated page headers and footers.
-- [ ] Preserve links where reliable source information is available.
+- [x] Preserve links where reliable source information is available.
 - [ ] Define an initial strategy for tables and code-like text.
 - [ ] Add diagnostics for uncertain or omitted structures.
 - [ ] Expand the fixture corpus to cover each supported behavior.
@@ -259,3 +259,4 @@ A task is complete when:
 | 2026-09-27 | Added flat ordered and unordered list detection with semantic validation, wrapped-item analysis, and Markdown rendering. |
 | 2026-09-27 | Added conservative two-column reading order with full-width region boundaries and ambiguous-layout fallback. |
 | 2026-09-27 | Added cross-page detection and suppression of repeated headers, footers, and digit-varying page labels. |
+| 2026-09-27 | Preserved reliable external PDF link annotations through neutral layout and semantic models into escaped Markdown links. |

@@ -65,15 +65,15 @@ func TestRendererWritesOrderedAndUnorderedLists(t *testing.T) {
 			&document.Paragraph{Text: "Intro."},
 			&document.List{
 				Kind: document.ListKindUnordered,
-				Items: []string{
-					"First *literal* item",
-					"# Not a heading\ncontinued",
+				Items: []document.ListItem{
+					{Text: "First *literal* item"},
+					{Text: "# Not a heading\ncontinued"},
 				},
 			},
 			&document.List{
 				Kind:  document.ListKindOrdered,
 				Start: 3,
-				Items: []string{"Third item", "Fourth item"},
+				Items: []document.ListItem{{Text: "Third item"}, {Text: "Fourth item"}},
 			},
 		},
 	}
@@ -95,6 +95,35 @@ func TestRendererWritesOrderedAndUnorderedLists(t *testing.T) {
 	}
 	if !reflect.DeepEqual(*doc, before) {
 		t.Fatal("Render() mutated its input document")
+	}
+}
+
+func TestRendererWritesSemanticLinks(t *testing.T) {
+	t.Parallel()
+
+	doc := &document.Document{
+		Blocks: []document.Block{
+			&document.Paragraph{
+				Text: "Read *the docs*.",
+				Links: []document.TextLink{
+					{
+						Start:       5,
+						End:         15,
+						Destination: "https://example.test/a_(b)?x=1&y=2",
+					},
+				},
+			},
+		},
+	}
+	var output bytes.Buffer
+
+	err := markdown.NewRenderer().Render(context.Background(), doc, &output)
+	if err != nil {
+		t.Fatalf("Render() returned an unexpected error: %v", err)
+	}
+	want := "Read [\\*the docs\\*](https://example.test/a_\\(b\\)?x=1&y=2).\n"
+	if got := output.String(); got != want {
+		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
 
@@ -175,7 +204,7 @@ func TestRendererRejectsInvalidInputBeforeWriting(t *testing.T) {
 				Blocks: []document.Block{
 					&document.List{
 						Kind:  document.ListKindUnordered,
-						Items: []string{string([]byte{0xff})},
+						Items: []document.ListItem{{Text: string([]byte{0xff})}},
 					},
 				},
 			},
@@ -293,13 +322,21 @@ func cloneDocument(doc document.Document) document.Document {
 		switch typed := block.(type) {
 		case *document.Paragraph:
 			copied := *typed
+			copied.Links = append([]document.TextLink(nil), typed.Links...)
 			clone.Blocks[index] = &copied
 		case *document.Heading:
 			copied := *typed
+			copied.Links = append([]document.TextLink(nil), typed.Links...)
 			clone.Blocks[index] = &copied
 		case *document.List:
 			copied := *typed
-			copied.Items = append([]string(nil), typed.Items...)
+			copied.Items = append([]document.ListItem(nil), typed.Items...)
+			for itemIndex := range copied.Items {
+				copied.Items[itemIndex].Links = append(
+					[]document.TextLink(nil),
+					typed.Items[itemIndex].Links...,
+				)
+			}
 			clone.Blocks[index] = &copied
 		}
 	}

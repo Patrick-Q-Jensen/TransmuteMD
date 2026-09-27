@@ -80,7 +80,7 @@ func validateBlocks(ctx context.Context, doc *document.Document) error {
 			text = typed.Text
 		case *document.List:
 			for itemIndex, item := range typed.Items {
-				if !utf8.ValidString(item) {
+				if !utf8.ValidString(item.Text) {
 					return fmt.Errorf(
 						"render Markdown block %d list item %d: text is not valid UTF-8",
 						index+1,
@@ -106,9 +106,9 @@ func validateBlocks(ctx context.Context, doc *document.Document) error {
 func renderBlock(ctx context.Context, block document.Block) (string, error) {
 	switch typed := block.(type) {
 	case *document.Paragraph:
-		return escapeParagraph(ctx, normalizeLineEndings(typed.Text))
+		return renderLinkedText(ctx, typed.Text, typed.Links)
 	case *document.Heading:
-		content, err := escapeParagraph(ctx, typed.Text)
+		content, err := renderLinkedText(ctx, typed.Text, typed.Links)
 		if err != nil {
 			return "", err
 		}
@@ -134,7 +134,11 @@ func renderList(ctx context.Context, list *document.List) (string, error) {
 		if list.Kind == document.ListKindOrdered {
 			prefix = fmt.Sprintf("%d. ", list.Start+index)
 		}
-		content, err := escapeParagraph(ctx, normalizeLineEndings(item))
+		content, err := renderLinkedText(
+			ctx,
+			item.Text,
+			item.Links,
+		)
 		if err != nil {
 			return "", fmt.Errorf("render list item %d: %w", index+1, err)
 		}
@@ -144,6 +148,59 @@ func renderList(ctx context.Context, list *document.List) (string, error) {
 		result.WriteString(content)
 	}
 	return result.String(), nil
+}
+
+func renderLinkedText(
+	ctx context.Context,
+	text string,
+	links []document.TextLink,
+) (string, error) {
+	if len(links) == 0 {
+		return escapeParagraph(ctx, normalizeLineEndings(text))
+	}
+
+	var result strings.Builder
+	start := 0
+	for _, link := range links {
+		before, err := escapeParagraph(
+			ctx,
+			normalizeLineEndings(text[start:link.Start]),
+		)
+		if err != nil {
+			return "", err
+		}
+		label, err := escapeParagraph(
+			ctx,
+			normalizeLineEndings(text[link.Start:link.End]),
+		)
+		if err != nil {
+			return "", err
+		}
+		result.WriteString(before)
+		result.WriteByte('[')
+		result.WriteString(label)
+		result.WriteString("](")
+		result.WriteString(escapeLinkDestination(link.Destination))
+		result.WriteByte(')')
+		start = link.End
+	}
+	after, err := escapeParagraph(ctx, normalizeLineEndings(text[start:]))
+	if err != nil {
+		return "", err
+	}
+	result.WriteString(after)
+	return result.String(), nil
+}
+
+func escapeLinkDestination(destination string) string {
+	replacer := strings.NewReplacer(
+		`\`, `\\`,
+		`(`, `\(`,
+		`)`, `\)`,
+		`<`, `%3C`,
+		`>`, `%3E`,
+	)
+	return replacer.Replace(destination)
 }
 
 func writeString(ctx context.Context, output io.Writer, content string) error {

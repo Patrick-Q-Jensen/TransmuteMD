@@ -14,14 +14,20 @@ func TestDocumentValidate(t *testing.T) {
 		Blocks: []document.Block{
 			&document.Heading{Level: 1, Text: "Title"},
 			&document.Paragraph{Text: "A plain paragraph."},
+			&document.Paragraph{
+				Text: "Visit the site.",
+				Links: []document.TextLink{
+					{Start: 10, End: 14, Destination: "https://example.test"},
+				},
+			},
 			&document.List{
 				Kind:  document.ListKindUnordered,
-				Items: []string{"First item", "Second item"},
+				Items: []document.ListItem{{Text: "First item"}, {Text: "Second item"}},
 			},
 			&document.List{
 				Kind:  document.ListKindOrdered,
 				Start: 3,
-				Items: []string{"Third item", "Fourth item"},
+				Items: []document.ListItem{{Text: "Third item"}, {Text: "Fourth item"}},
 			},
 		},
 	}
@@ -107,13 +113,13 @@ func TestDocumentValidateRejectsInvalidList(t *testing.T) {
 		list *document.List
 	}{
 		{name: "nil", list: nilList},
-		{name: "unknown kind", list: &document.List{Kind: document.ListKind(99), Items: []string{"item"}}},
-		{name: "unordered start", list: &document.List{Kind: document.ListKindUnordered, Start: 1, Items: []string{"item"}}},
-		{name: "negative ordered start", list: &document.List{Kind: document.ListKindOrdered, Start: -1, Items: []string{"item"}}},
-		{name: "oversized ordered start", list: &document.List{Kind: document.ListKindOrdered, Start: 1_000_000_000, Items: []string{"item"}}},
-		{name: "oversized ordered range", list: &document.List{Kind: document.ListKindOrdered, Start: 999_999_999, Items: []string{"item", "item"}}},
+		{name: "unknown kind", list: &document.List{Kind: document.ListKind(99), Items: []document.ListItem{{Text: "item"}}}},
+		{name: "unordered start", list: &document.List{Kind: document.ListKindUnordered, Start: 1, Items: []document.ListItem{{Text: "item"}}}},
+		{name: "negative ordered start", list: &document.List{Kind: document.ListKindOrdered, Start: -1, Items: []document.ListItem{{Text: "item"}}}},
+		{name: "oversized ordered start", list: &document.List{Kind: document.ListKindOrdered, Start: 1_000_000_000, Items: []document.ListItem{{Text: "item"}}}},
+		{name: "oversized ordered range", list: &document.List{Kind: document.ListKindOrdered, Start: 999_999_999, Items: []document.ListItem{{Text: "item"}, {Text: "item"}}}},
 		{name: "no items", list: &document.List{Kind: document.ListKindUnordered}},
-		{name: "empty item", list: &document.List{Kind: document.ListKindUnordered, Items: []string{""}}},
+		{name: "empty item", list: &document.List{Kind: document.ListKindUnordered, Items: []document.ListItem{{}}}},
 	}
 
 	for _, test := range tests {
@@ -125,5 +131,24 @@ func TestDocumentValidateRejectsInvalidList(t *testing.T) {
 				t.Fatalf("Validate() returned nil for invalid list %+v", test.list)
 			}
 		})
+	}
+}
+
+func TestDocumentValidateRejectsInvalidTextLink(t *testing.T) {
+	t.Parallel()
+
+	tests := []document.TextLink{
+		{Start: -1, End: 1, Destination: "https://example.test"},
+		{Start: 0, End: 20, Destination: "https://example.test"},
+		{Start: 0, End: 4, Destination: "relative"},
+		{Start: 0, End: 4, Destination: "javascript:alert(1)"},
+	}
+	for _, link := range tests {
+		doc := document.Document{Blocks: []document.Block{
+			&document.Paragraph{Text: "text", Links: []document.TextLink{link}},
+		}}
+		if err := doc.Validate(); err == nil {
+			t.Fatalf("Validate() returned nil for invalid link %+v", link)
+		}
 	}
 }
