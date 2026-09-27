@@ -1,5 +1,5 @@
 # TransmuteMD command
 
-This directory will contain the executable entry point. It remains code-free
-until the initial CLI behavior can be wired to application contracts without
-introducing a misleading partial command.
+This directory contains the executable entry point. Command-line parsing and
+diagnostics remain in `internal/cli`; this package owns signal handling and
+dependency wiring.

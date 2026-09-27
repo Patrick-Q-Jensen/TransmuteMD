@@ -24,6 +24,10 @@ var (
 	ErrNoExtractableText = errors.New(
 		"document contains no extractable text; scanned documents require OCR",
 	)
+
+	// ErrOutput indicates that fully rendered content could not be committed
+	// to its destination.
+	ErrOutput = errors.New("output operation failed")
 )
 
 // Converter coordinates extraction, analysis, rendering, and output commit.
@@ -114,7 +118,7 @@ func (converter *Converter) Convert(
 		return fmt.Errorf("commit output: %w", err)
 	}
 	if err := destination.Commit(ctx, rendered.Bytes()); err != nil {
-		return fmt.Errorf("commit output: %w", err)
+		return fmt.Errorf("commit output: %w: %w", ErrOutput, err)
 	}
 	return nil
 }

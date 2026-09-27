@@ -73,6 +73,13 @@ The CLI validates arguments and opens the source. Format selection determines
 which extractor to create. Initially only PDF is supported, but orchestration
 must not contain PDFium-specific behavior.
 
+The initial CLI recognizes `%PDF-` within the first 1,024 input bytes instead
+of relying on the filename extension. It resolves default and explicit output
+paths, prevents input/output aliasing, maps stable error categories to the
+documented exit codes, and translates process interruption into context
+cancellation. The executable entry point owns concrete PDFium, analyzer, and
+renderer construction.
+
 ### Extraction
 
 An extractor decodes a source into an engine-neutral layout model containing
@@ -209,6 +216,11 @@ file in the destination directory, write and synchronize its complete
 contents, close it, then rename it into place. Existing files are preserved
 unless replacement is explicitly enabled, and temporary files are removed on
 all reported failure paths.
+
+The CLI closes the input and process-scoped PDFium runtime before delegating
+the final output commit. Cleanup failure therefore prevents both file and
+standard-output publication rather than reporting failure after visible
+output has already been produced.
 
 Stage-specific option types will be introduced only when a concrete behavior
 requires them.

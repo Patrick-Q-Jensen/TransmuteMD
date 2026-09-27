@@ -15,9 +15,7 @@ The project is in the vertical-slice implementation phase. See the
 [implementation plan](docs/implementation-plan.md) for current progress and
 planned work.
 
-## Planned usage
-
-The initial command-line contract is defined, but not yet implemented:
+## Usage
 
 ```console
 transmutemd document.pdf
@@ -29,7 +27,9 @@ Without `--output`, TransmuteMD creates `document.md` beside the input. It
 refuses to overwrite an existing file unless `--force` is supplied.
 
 TransmuteMD should be distributed as a single executable with no separately
-installed PDF engine or runtime.
+installed PDF engine or runtime. Binary distribution remains blocked by the
+embedded PDFium provenance and notice audit described below; development
+builds are functional.
 
 ## Planned project layout
 
@@ -84,6 +84,7 @@ go fmt ./...
 go vet ./...
 go test ./...
 go run ./testdata/pdf/validate.go
+go run ./cmd/transmutemd --help
 ```
 
 GitHub Actions runs formatting checks, vetting, tests, and builds on Windows,
