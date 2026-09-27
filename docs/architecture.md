@@ -350,7 +350,9 @@ details.
 The first engine identifier is `pdfium-wasm`. Engine construction belongs in a
 small factory or composition layer, not in conversion logic. A future
 `pdfium-native` or pure-Go implementation must satisfy the same extractor
-contract.
+contract. The Phase 3 [native PDFium evaluation](evaluations/native-pdfium.md)
+did not accept a native backend because the supported CGo modes add a runtime
+library or worker process and platform-specific build requirements.
 
 The adapter is responsible for:
 
@@ -359,7 +361,7 @@ The adapter is responsible for:
 - checking cancellation between meaningful operations;
 - translating PDFium output into internal coordinates and units;
 - wrapping errors with operation and page context;
-- detecting password-protected and likely image-only documents where possible.
+- detecting password-protected and likely image-only documents where possible;
 - enforcing configured source, page, geometry, text-run, and annotation limits
   at the earliest backend operation that exposes each measurement.
 

@@ -186,7 +186,7 @@ adapter can be replaced without redesigning the pipeline.
 - [x] Add fuzz tests for project-owned parsing and transformation boundaries.
 - [ ] Add an explicit engine-selection mechanism if a second backend is
       implemented.
-- [ ] Evaluate native PDFium against the same corpus and contract tests.
+- [x] Evaluate native PDFium against the same corpus and contract tests.
 - [ ] Document unsupported PDF features and expected degradation.
 - [ ] Benchmark representative documents for time and peak memory.
 
@@ -269,3 +269,4 @@ A task is complete when:
 | 2026-09-27 | Verified instance, document, annotation, and output cleanup across success, failure, and cancellation paths. |
 | 2026-09-27 | Added deterministic difficult-input tests for malformed, encrypted, rotated, subset-font, and image-only PDFs. |
 | 2026-09-27 | Added bounded fuzz targets for PDF recognition, layout analysis, and Markdown rendering. |
+| 2026-09-27 | Evaluated native PDFium and retained the embedded WASM backend because native modes violate current build or distribution constraints. |
