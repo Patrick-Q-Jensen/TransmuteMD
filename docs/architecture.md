@@ -438,6 +438,9 @@ committing output, and its error explains that scanned documents require OCR.
   output paths.
 - **Corpus tests:** evaluate multi-column text, unusual fonts, ligatures,
   rotation, tables, forms, encryption, malformed files, and image-only pages.
+- **Fuzz tests:** exercise owned PDF-header recognition, physical-to-semantic
+  analysis, and semantic-to-Markdown rendering boundaries with bounded inputs
+  and output invariant checks.
 
 Small malformed, encrypted, rotated, subset-font, and image-only PDFs are
 constructed deterministically in tests. Keeping these edge-case inputs

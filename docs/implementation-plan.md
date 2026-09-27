@@ -183,7 +183,7 @@ adapter can be replaced without redesigning the pipeline.
       pathological content where the backend permits.
 - [x] Verify cancellation and cleanup on success and failure paths.
 - [x] Test malformed, encrypted, rotated, font-subset, and image-only PDFs.
-- [ ] Add fuzz tests for project-owned parsing and transformation boundaries.
+- [x] Add fuzz tests for project-owned parsing and transformation boundaries.
 - [ ] Add an explicit engine-selection mechanism if a second backend is
       implemented.
 - [ ] Evaluate native PDFium against the same corpus and contract tests.
@@ -268,3 +268,4 @@ A task is complete when:
 | 2026-09-27 | Added validated extraction limits for source size, pages, page geometry, character runs, and annotations. |
 | 2026-09-27 | Verified instance, document, annotation, and output cleanup across success, failure, and cancellation paths. |
 | 2026-09-27 | Added deterministic difficult-input tests for malformed, encrypted, rotated, subset-font, and image-only PDFs. |
+| 2026-09-27 | Added bounded fuzz targets for PDF recognition, layout analysis, and Markdown rendering. |
