@@ -12,6 +12,7 @@ were made. They complement the current-state description in
 | [0002](0002-use-embedded-pdfium-wasm.md) | Use embedded PDFium WebAssembly for initial PDF extraction | Accepted |
 | [0003](0003-separate-extraction-analysis-and-rendering.md) | Separate extraction, semantic analysis, and rendering | Accepted |
 | [0004](0004-target-windows-linux-and-macos.md) | Target Windows, Linux, and macOS | Accepted |
+| [0005](0005-preserve-ambiguous-tables-and-code-as-text.md) | Preserve ambiguous tables and code as text | Accepted |
 
 ## Process
 
@@ -33,4 +34,3 @@ short imperative filename. ADRs use one of these statuses:
 Accepted ADRs are immutable historical records except for typo corrections and
 clarifying links. A changed decision receives a new ADR that supersedes the
 old one. Update this index and the implementation plan in the same change.
-

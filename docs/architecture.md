@@ -153,6 +153,22 @@ unambiguous annotation rectangle. Analysis carries the resulting UTF-8 byte
 ranges into paragraphs, headings, and list items. Overlapping annotations
 with different destinations remain plain text rather than guessing.
 
+### Tables and code-like text
+
+Phase 2 preserves table-like and code-like regions as ordinary text rather
+than assigning uncertain semantics. Table detection may use repeated row and
+column alignment for diagnostics, but a future semantic table requires a
+confident rectangular cell assignment; merged, multiline, or ambiguous cells
+fall back to text. The renderer does not fabricate Markdown delimiters or emit
+raw HTML.
+
+A future semantic code block requires multiple adjacent lines with consistent
+monospaced-font, alignment, spacing, and indentation evidence. Its language is
+empty unless reliable source metadata becomes available. A single monospaced
+line does not qualify, and inline code inference is separate work. These
+constraints are recorded in
+[ADR-0005](decisions/0005-preserve-ambiguous-tables-and-code-as-text.md).
+
 ### Rendering
 
 The renderer converts the semantic document to Markdown. It owns Markdown
