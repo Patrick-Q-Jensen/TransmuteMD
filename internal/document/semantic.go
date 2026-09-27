@@ -3,6 +3,7 @@ package document
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Document contains semantic blocks in reading order.
@@ -43,6 +44,30 @@ func (p *Paragraph) validate() error {
 	}
 	if p.Text == "" {
 		return errors.New("paragraph text must not be empty")
+	}
+	return nil
+}
+
+// Heading is a section title with a Markdown-compatible level from 1 to 6.
+type Heading struct {
+	Level int
+	Text  string
+}
+
+func (*Heading) isBlock() {}
+
+func (h *Heading) validate() error {
+	if h == nil {
+		return errors.New("heading must not be nil")
+	}
+	if h.Level < 1 || h.Level > 6 {
+		return errors.New("heading level must be between 1 and 6")
+	}
+	if h.Text == "" {
+		return errors.New("heading text must not be empty")
+	}
+	if strings.ContainsAny(h.Text, "\r\n") {
+		return errors.New("heading text must be a single line")
 	}
 	return nil
 }

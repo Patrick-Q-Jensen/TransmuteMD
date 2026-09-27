@@ -117,6 +117,12 @@ same paragraph, and an ASCII or soft hyphen at a line end is removed when the
 next line begins with a lowercase letter. Rotation and multi-column behavior
 remain separate analysis work.
 
+Heading inference compares each line's largest observed font size and weight
+with page-level median body evidence. A materially larger line with boundary
+or above-normal spacing becomes a heading; a bold-only line requires strong
+spacing on both sides. Conservative size ratios map detected headings to
+levels 1 through 3, while ordinary emphasized lines remain paragraph text.
+
 ### Rendering
 
 The renderer converts the semantic document to Markdown. It owns Markdown
@@ -127,6 +133,8 @@ syntax is not inferred accidentally, normalizes embedded line endings to LF,
 separates paragraphs with one blank line, and terminates non-empty output with
 LF. Cancellation, short writes, and writer failures are returned with block
 context; transactional publication remains the application's responsibility.
+Detected headings render as escaped ATX headings followed by the same
+single-blank-line block separation used for paragraphs.
 
 ## 6. Package boundaries
 
@@ -262,8 +270,9 @@ reading order. Style fields use zero values when unavailable so engines are
 not required to expose backend-specific font data.
 
 The semantic model is an ordered set of blocks owned by `internal/document`.
-The initial block is a plain paragraph. Later heading and list work will add
-block types without exposing extraction details to renderers.
+Plain paragraphs and validated level 1 through 6 headings are currently
+defined. Later list work will add block types without exposing extraction
+details to renderers.
 
 ## 8. Engine selection and lifecycle
 

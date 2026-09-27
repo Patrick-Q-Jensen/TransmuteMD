@@ -186,6 +186,144 @@ func TestBasicAnalyzerJoinsSoftHyphenatedWraps(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzerDetectsHeadingFromSizeAndSpacing(t *testing.T) {
+	t.Parallel()
+
+	title := textRun("Document title", 10, 10, 180, 30)
+	title.Style = document.TextStyle{FontSize: 24, FontWeight: 700}
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("continues here.", 10, 59, 100, 69),
+					title,
+					textRun("The body paragraph", 10, 45, 180, 55),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got, want := len(result.Blocks), 2; got != want {
+		t.Fatalf("block count = %d, want %d", got, want)
+	}
+	heading, ok := result.Blocks[0].(*document.Heading)
+	if !ok {
+		t.Fatalf("block 1 has type %T, want *document.Heading", result.Blocks[0])
+	}
+	if heading.Level != 1 || heading.Text != "Document title" {
+		t.Fatalf("heading = %+v, want level 1 document title", heading)
+	}
+	paragraph, ok := result.Blocks[1].(*document.Paragraph)
+	if !ok {
+		t.Fatalf("block 2 has type %T, want *document.Paragraph", result.Blocks[1])
+	}
+	if got, want := paragraph.Text, "The body paragraph continues here."; got != want {
+		t.Fatalf("paragraph = %q, want %q", got, want)
+	}
+}
+
+func TestBasicAnalyzerDetectsSeparatedBoldHeading(t *testing.T) {
+	t.Parallel()
+
+	heading := textRun("Section", 10, 52, 80, 62)
+	heading.Style = document.TextStyle{FontSize: 10, FontWeight: 700}
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("First paragraph", 10, 10, 180, 20),
+					textRun("continues.", 10, 24, 80, 34),
+					heading,
+					textRun("Second paragraph", 10, 80, 180, 90),
+					textRun("continues.", 10, 94, 80, 104),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got, want := len(result.Blocks), 3; got != want {
+		t.Fatalf("block count = %d, want %d", got, want)
+	}
+	got, ok := result.Blocks[1].(*document.Heading)
+	if !ok {
+		t.Fatalf("block 2 has type %T, want *document.Heading", result.Blocks[1])
+	}
+	if got.Level != 3 || got.Text != "Section" {
+		t.Fatalf("heading = %+v, want level 3 section", got)
+	}
+}
+
+func TestBasicAnalyzerDoesNotPromoteOnlyLineToHeading(t *testing.T) {
+	t.Parallel()
+
+	line := textRun("Standalone text", 10, 10, 180, 30)
+	line.Style = document.TextStyle{FontSize: 24, FontWeight: 700}
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number:   1,
+				Width:    220,
+				Height:   220,
+				TextRuns: []document.TextRun{line},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, []string{"Standalone text"}) {
+		t.Fatalf("paragraphs = %#v, want standalone paragraph", got)
+	}
+}
+
+func TestBasicAnalyzerRequiresSpacingForModestSizeIncrease(t *testing.T) {
+	t.Parallel()
+
+	emphasized := textRun("emphasized text", 10, 24, 140, 36)
+	emphasized.Style = document.TextStyle{FontSize: 12, FontWeight: 400}
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("Paragraph begins with", 10, 10, 180, 20),
+					emphasized,
+					textRun("and continues normally.", 10, 40, 180, 50),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(
+		got,
+		[]string{"Paragraph begins with emphasized text and continues normally."},
+	) {
+		t.Fatalf("paragraphs = %#v, want one paragraph", got)
+	}
+}
+
 func TestBasicAnalyzerReturnsEmptyDocumentForWhitespaceOnlyLayout(t *testing.T) {
 	t.Parallel()
 

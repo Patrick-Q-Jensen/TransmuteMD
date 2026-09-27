@@ -37,6 +37,26 @@ func TestRendererWritesPlainParagraphs(t *testing.T) {
 	}
 }
 
+func TestRendererWritesHeadingAndParagraph(t *testing.T) {
+	t.Parallel()
+
+	doc := &document.Document{
+		Blocks: []document.Block{
+			&document.Heading{Level: 2, Text: "A *literal* heading"},
+			&document.Paragraph{Text: "Body text."},
+		},
+	}
+	var output bytes.Buffer
+
+	err := markdown.NewRenderer().Render(context.Background(), doc, &output)
+	if err != nil {
+		t.Fatalf("Render() returned an unexpected error: %v", err)
+	}
+	if got, want := output.String(), "## A \\*literal\\* heading\n\nBody text.\n"; got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
 func TestRendererEscapesMarkdownAndNormalizesLineEndings(t *testing.T) {
 	t.Parallel()
 
@@ -178,8 +198,8 @@ func TestRendererPreservesWriterError(t *testing.T) {
 	if !errors.Is(err, want) {
 		t.Fatalf("Render() error = %v, want %v", err, want)
 	}
-	if !strings.Contains(err.Error(), "write paragraph 1") {
-		t.Fatalf("Render() error = %q, want paragraph context", err)
+	if !strings.Contains(err.Error(), "write block 1") {
+		t.Fatalf("Render() error = %q, want block context", err)
 	}
 }
 

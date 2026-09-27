@@ -12,12 +12,33 @@ func TestDocumentValidate(t *testing.T) {
 
 	doc := document.Document{
 		Blocks: []document.Block{
+			&document.Heading{Level: 1, Text: "Title"},
 			&document.Paragraph{Text: "A plain paragraph."},
 		},
 	}
 
 	if err := doc.Validate(); err != nil {
 		t.Fatalf("Validate() returned an unexpected error: %v", err)
+	}
+}
+
+func TestDocumentValidateRejectsInvalidHeading(t *testing.T) {
+	t.Parallel()
+
+	tests := []document.Heading{
+		{Level: 0, Text: "Title"},
+		{Level: 7, Text: "Title"},
+		{Level: 1},
+		{Level: 1, Text: "Two\nlines"},
+	}
+
+	for _, heading := range tests {
+		doc := document.Document{
+			Blocks: []document.Block{&heading},
+		}
+		if err := doc.Validate(); err == nil {
+			t.Fatalf("Validate() returned nil for invalid heading %+v", heading)
+		}
 	}
 }
 

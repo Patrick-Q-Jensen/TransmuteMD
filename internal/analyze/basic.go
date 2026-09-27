@@ -120,7 +120,7 @@ func analyzePage(ctx context.Context, page document.Page) ([]document.Block, err
 	}
 	slices.SortStableFunc(lines, compareLines)
 
-	return groupParagraphs(ctx, lines)
+	return groupBlocks(ctx, lines)
 }
 
 func normalizeRunText(run document.TextRun) string {
@@ -254,9 +254,10 @@ func compareLines(left, right textLine) int {
 	return compareFloat(left.left, right.left)
 }
 
-func groupParagraphs(ctx context.Context, lines []textLine) ([]document.Block, error) {
+func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error) {
 	blocks := make([]document.Block, 0, len(lines))
-	pageLeft, pageRight := textMargins(lines)
+	headingLevels := detectHeadingLevels(lines)
+	pageLeft, pageRight := textMargins(lines, headingLevels)
 	var paragraph []textLine
 
 	flush := func() {
@@ -267,11 +268,19 @@ func groupParagraphs(ctx context.Context, lines []textLine) ([]document.Block, e
 		paragraph = paragraph[:0]
 	}
 
-	for _, line := range lines {
+	for index, line := range lines {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		if line.text == "" {
+			continue
+		}
+		if headingLevels[index] != 0 {
+			flush()
+			blocks = append(blocks, &document.Heading{
+				Level: headingLevels[index],
+				Text:  line.text,
+			})
 			continue
 		}
 		if len(paragraph) > 0 &&
@@ -285,17 +294,123 @@ func groupParagraphs(ctx context.Context, lines []textLine) ([]document.Block, e
 	return blocks, nil
 }
 
-func textMargins(lines []textLine) (float64, float64) {
+func textMargins(lines []textLine, headingLevels []int) (float64, float64) {
 	left := math.Inf(1)
 	right := math.Inf(-1)
-	for _, line := range lines {
-		if line.text == "" {
+	for index, line := range lines {
+		if line.text == "" || headingLevels[index] != 0 {
 			continue
 		}
 		left = math.Min(left, line.left)
 		right = math.Max(right, line.right)
 	}
 	return left, right
+}
+
+func detectHeadingLevels(lines []textLine) []int {
+	levels := make([]int, len(lines))
+	bodyScale := medianLineScale(lines)
+	bodyWeight := medianLineWeight(lines)
+	if bodyScale <= 0 {
+		return levels
+	}
+	spacingThreshold := math.Max(bodyScale*0.35, medianLineGap(lines)*1.5)
+
+	for index, line := range lines {
+		if line.text == "" || !hasHeadingSpacing(lines, index, spacingThreshold) {
+			continue
+		}
+
+		scaleRatio := line.scale() / bodyScale
+		boldEvidence := line.weight() >= 600 &&
+			line.weight() >= bodyWeight+200 &&
+			hasStrongHeadingSpacing(lines, index, spacingThreshold)
+		if scaleRatio < 1.15 && !boldEvidence {
+			continue
+		}
+
+		switch {
+		case scaleRatio >= 1.6:
+			levels[index] = 1
+		case scaleRatio >= 1.35:
+			levels[index] = 2
+		default:
+			levels[index] = 3
+		}
+	}
+	return levels
+}
+
+func medianLineScale(lines []textLine) float64 {
+	values := make([]float64, 0, len(lines))
+	for _, line := range lines {
+		if line.text != "" && line.scale() > 0 {
+			values = append(values, line.scale())
+		}
+	}
+	if len(values) == 0 {
+		return 0
+	}
+	slices.Sort(values)
+	return values[(len(values)-1)/2]
+}
+
+func medianLineGap(lines []textLine) float64 {
+	values := make([]float64, 0, len(lines)-1)
+	for index := 1; index < len(lines); index++ {
+		gap := lines[index].top - lines[index-1].bottom
+		if gap >= 0 {
+			values = append(values, gap)
+		}
+	}
+	if len(values) == 0 {
+		return 0
+	}
+	slices.Sort(values)
+	return values[(len(values)-1)/2]
+}
+
+func medianLineWeight(lines []textLine) int {
+	values := make([]int, 0, len(lines))
+	for _, line := range lines {
+		if line.text != "" {
+			values = append(values, line.weight())
+		}
+	}
+	if len(values) == 0 {
+		return 0
+	}
+	slices.Sort(values)
+	return values[(len(values)-1)/2]
+}
+
+func (line textLine) scale() float64 {
+	scale := line.bottom - line.top
+	for _, run := range line.runs {
+		scale = math.Max(scale, run.run.Style.FontSize)
+	}
+	return scale
+}
+
+func (line textLine) weight() int {
+	weight := 0
+	for _, run := range line.runs {
+		weight = max(weight, run.run.Style.FontWeight)
+	}
+	return weight
+}
+
+func hasHeadingSpacing(lines []textLine, index int, threshold float64) bool {
+	return index == 0 ||
+		index == len(lines)-1 ||
+		lines[index].top-lines[index-1].bottom > threshold ||
+		lines[index+1].top-lines[index].bottom > threshold
+}
+
+func hasStrongHeadingSpacing(lines []textLine, index int, threshold float64) bool {
+	before := index == 0 || lines[index].top-lines[index-1].bottom > threshold
+	after := index == len(lines)-1 || lines[index+1].top-lines[index].bottom > threshold
+	return before && after
 }
 
 func startsNewParagraph(

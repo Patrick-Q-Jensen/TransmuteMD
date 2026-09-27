@@ -27,7 +27,7 @@ func NewRenderer() *Renderer {
 	return &Renderer{}
 }
 
-// Render writes plain paragraphs separated by one blank line.
+// Render writes semantic blocks separated by one blank line.
 func (*Renderer) Render(
 	ctx context.Context,
 	doc *document.Document,
@@ -45,47 +45,66 @@ func (*Renderer) Render(
 	if err := doc.Validate(); err != nil {
 		return fmt.Errorf("validate document for Markdown rendering: %w", err)
 	}
-	if err := validateParagraphs(ctx, doc); err != nil {
+	if err := validateBlocks(ctx, doc); err != nil {
 		return err
 	}
 
 	for index, block := range doc.Blocks {
-		paragraph := block.(*document.Paragraph)
-		content, err := escapeParagraph(ctx, normalizeLineEndings(paragraph.Text))
+		rendered, err := renderBlock(ctx, block)
 		if err != nil {
-			return fmt.Errorf("render paragraph %d: %w", index+1, err)
+			return fmt.Errorf("render block %d: %w", index+1, err)
 		}
 		if index > 0 {
 			if err := writeString(ctx, output, "\n"); err != nil {
-				return fmt.Errorf("write paragraph %d separator: %w", index+1, err)
+				return fmt.Errorf("write block %d separator: %w", index+1, err)
 			}
 		}
 
-		if err := writeString(ctx, output, content+"\n"); err != nil {
-			return fmt.Errorf("write paragraph %d: %w", index+1, err)
+		if err := writeString(ctx, output, rendered+"\n"); err != nil {
+			return fmt.Errorf("write block %d: %w", index+1, err)
 		}
 	}
 	return nil
 }
 
-func validateParagraphs(ctx context.Context, doc *document.Document) error {
+func validateBlocks(ctx context.Context, doc *document.Document) error {
 	for index, block := range doc.Blocks {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("validate Markdown block %d: %w", index+1, err)
 		}
-		paragraph, ok := block.(*document.Paragraph)
-		if !ok {
+		var text string
+		switch typed := block.(type) {
+		case *document.Paragraph:
+			text = typed.Text
+		case *document.Heading:
+			text = typed.Text
+		default:
 			return fmt.Errorf(
 				"render Markdown block %d: unsupported block type %T",
 				index+1,
 				block,
 			)
 		}
-		if !utf8.ValidString(paragraph.Text) {
-			return fmt.Errorf("render Markdown paragraph %d: text is not valid UTF-8", index+1)
+		if !utf8.ValidString(text) {
+			return fmt.Errorf("render Markdown block %d: text is not valid UTF-8", index+1)
 		}
 	}
 	return nil
+}
+
+func renderBlock(ctx context.Context, block document.Block) (string, error) {
+	switch typed := block.(type) {
+	case *document.Paragraph:
+		return escapeParagraph(ctx, normalizeLineEndings(typed.Text))
+	case *document.Heading:
+		content, err := escapeParagraph(ctx, typed.Text)
+		if err != nil {
+			return "", err
+		}
+		return strings.Repeat("#", typed.Level) + " " + content, nil
+	default:
+		return "", fmt.Errorf("unsupported block type %T", block)
+	}
 }
 
 func writeString(ctx context.Context, output io.Writer, content string) error {

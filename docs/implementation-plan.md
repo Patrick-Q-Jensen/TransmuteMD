@@ -163,7 +163,7 @@ Markdown text using the embedded PDFium WebAssembly backend.
 **Outcome:** common born-digital documents produce readable, stable Markdown.
 
 - [x] Preserve paragraph boundaries across wrapped lines.
-- [ ] Detect headings using font and spacing evidence.
+- [x] Detect headings using font and spacing evidence.
 - [ ] Detect ordered and unordered lists.
 - [ ] Handle multi-column reading order.
 - [ ] Detect and reduce repeated page headers and footers.
@@ -255,3 +255,4 @@ A task is complete when:
 | 2026-09-27 | Added an exact Markdown golden test spanning the embedded PDFium runtime through transactional writer output. |
 | 2026-09-27 | Wired and exercised the single-file CLI with content recognition, transactional destinations, resource cleanup, diagnostics, and exit codes. |
 | 2026-09-27 | Refined wrapped-line analysis with indentation, short-line, spacing, and soft-hyphen paragraph heuristics. |
+| 2026-09-27 | Added conservative heading detection from relative font and spacing evidence with semantic and Markdown support. |
