@@ -178,7 +178,7 @@ Markdown text using the embedded PDFium WebAssembly backend.
 **Outcome:** conversion fails safely on difficult inputs, and the PDFium
 adapter can be replaced without redesigning the pipeline.
 
-- [ ] Add extraction contract tests independent of concrete engines.
+- [x] Add extraction contract tests independent of concrete engines.
 - [ ] Add limits for file size, page count, memory-sensitive operations, and
       pathological content where the backend permits.
 - [ ] Verify cancellation and cleanup on success and failure paths.
@@ -264,3 +264,4 @@ A task is complete when:
 | 2026-09-27 | Added engine-neutral structure diagnostics and successful CLI warnings for unsupported links and conservative text fallbacks. |
 | 2026-09-27 | Added a self-authored three-page Phase 2 PDF fixture covering semantic structure, links, repeated furniture, columns, and conservative fallbacks. |
 | 2026-09-27 | Added exact Markdown and diagnostic golden coverage for the Phase 2 fixture through the embedded PDFium pipeline. |
+| 2026-09-27 | Added a backend-independent extractor contract suite and registered the PDFium WASM adapter against it. |

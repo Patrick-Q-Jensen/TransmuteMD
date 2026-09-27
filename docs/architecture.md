@@ -440,6 +440,12 @@ The Phase 2 golden adds three-page coverage for headings, wrapped paragraphs,
 lists, two-column ordering, repeated page furniture, external links, and
 table/code fallback diagnostics through the same real pipeline.
 
+The reusable `internal/extract/contracttest` suite verifies every registered
+backend's stable name, neutral validated layout, source ownership,
+invalid-document categorization, and pre-cancelled behavior. Backend packages
+supply only representative valid and invalid sources plus expected neutral
+facts.
+
 ## 11. Portability and distribution
 
 Initial releases target Windows, Linux, and macOS. CPU architectures must be
