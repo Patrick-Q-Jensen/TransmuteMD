@@ -164,7 +164,7 @@ Markdown text using the embedded PDFium WebAssembly backend.
 
 - [x] Preserve paragraph boundaries across wrapped lines.
 - [x] Detect headings using font and spacing evidence.
-- [ ] Detect ordered and unordered lists.
+- [x] Detect ordered and unordered lists.
 - [ ] Handle multi-column reading order.
 - [ ] Detect and reduce repeated page headers and footers.
 - [ ] Preserve links where reliable source information is available.
@@ -256,3 +256,4 @@ A task is complete when:
 | 2026-09-27 | Wired and exercised the single-file CLI with content recognition, transactional destinations, resource cleanup, diagnostics, and exit codes. |
 | 2026-09-27 | Refined wrapped-line analysis with indentation, short-line, spacing, and soft-hyphen paragraph heuristics. |
 | 2026-09-27 | Added conservative heading detection from relative font and spacing evidence with semantic and Markdown support. |
+| 2026-09-27 | Added flat ordered and unordered list detection with semantic validation, wrapped-item analysis, and Markdown rendering. |

@@ -324,6 +324,167 @@ func TestBasicAnalyzerRequiresSpacingForModestSizeIncrease(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzerDetectsUnorderedListWithContinuation(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("Introductory paragraph.", 10, 10, 150, 20),
+					textRun("- First item wraps", 10, 38, 140, 48),
+					textRun("onto another line.", 24, 52, 130, 62),
+					textRun("\u2022 Second item.", 10, 66, 110, 76),
+					textRun("Following paragraph.", 10, 94, 150, 104),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got, want := len(result.Blocks), 3; got != want {
+		t.Fatalf("block count = %d, want %d", got, want)
+	}
+	first, ok := result.Blocks[0].(*document.Paragraph)
+	if !ok || first.Text != "Introductory paragraph." {
+		t.Fatalf("block 1 = %#v, want introductory paragraph", result.Blocks[0])
+	}
+	list, ok := result.Blocks[1].(*document.List)
+	if !ok {
+		t.Fatalf("block 2 has type %T, want *document.List", result.Blocks[1])
+	}
+	if list.Kind != document.ListKindUnordered || list.Start != 0 {
+		t.Fatalf("list kind/start = %d/%d, want unordered/0", list.Kind, list.Start)
+	}
+	wantItems := []string{"First item wraps onto another line.", "Second item."}
+	if !reflect.DeepEqual(list.Items, wantItems) {
+		t.Fatalf("list items = %#v, want %#v", list.Items, wantItems)
+	}
+	last, ok := result.Blocks[2].(*document.Paragraph)
+	if !ok || last.Text != "Following paragraph." {
+		t.Fatalf("block 3 = %#v, want following paragraph", result.Blocks[2])
+	}
+}
+
+func TestBasicAnalyzerDetectsOrderedListSequence(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("3) Third item.", 10, 10, 110, 20),
+					textRun("4. Fourth item.", 10, 24, 120, 34),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got, want := len(result.Blocks), 1; got != want {
+		t.Fatalf("block count = %d, want %d", got, want)
+	}
+	list, ok := result.Blocks[0].(*document.List)
+	if !ok {
+		t.Fatalf("block 1 has type %T, want *document.List", result.Blocks[0])
+	}
+	if list.Kind != document.ListKindOrdered || list.Start != 3 {
+		t.Fatalf("list kind/start = %d/%d, want ordered/3", list.Kind, list.Start)
+	}
+	wantItems := []string{"Third item.", "Fourth item."}
+	if !reflect.DeepEqual(list.Items, wantItems) {
+		t.Fatalf("list items = %#v, want %#v", list.Items, wantItems)
+	}
+}
+
+func TestBasicAnalyzerExcludesListMarkersFromParagraphMargins(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("- First item.", 10, 10, 100, 20),
+					textRun("- Second item.", 10, 24, 110, 34),
+					textRun("First paragraph begins here", 20, 52, 190, 62),
+					textRun("and ends on a short line.", 20, 66, 90, 76),
+					textRun("Second paragraph starts here", 20, 80, 190, 90),
+					textRun("and continues.", 20, 94, 110, 104),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got, want := len(result.Blocks), 3; got != want {
+		t.Fatalf("block count = %d, want %d", got, want)
+	}
+	if _, ok := result.Blocks[0].(*document.List); !ok {
+		t.Fatalf("block 1 has type %T, want *document.List", result.Blocks[0])
+	}
+	for index, want := range []string{
+		"First paragraph begins here and ends on a short line.",
+		"Second paragraph starts here and continues.",
+	} {
+		paragraph, ok := result.Blocks[index+1].(*document.Paragraph)
+		if !ok {
+			t.Fatalf(
+				"block %d has type %T, want *document.Paragraph",
+				index+2,
+				result.Blocks[index+1],
+			)
+		}
+		if paragraph.Text != want {
+			t.Fatalf("block %d text = %q, want %q", index+2, paragraph.Text, want)
+		}
+	}
+}
+
+func TestBasicAnalyzerRequiresMarkerSeparator(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("1.2 is not an ordered marker", 10, 10, 180, 20),
+					textRun("-not an unordered marker", 10, 24, 170, 34),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	want := []string{"1.2 is not an ordered marker -not an unordered marker"}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paragraphs = %#v, want %#v", got, want)
+	}
+}
+
 func TestBasicAnalyzerReturnsEmptyDocumentForWhitespaceOnlyLayout(t *testing.T) {
 	t.Parallel()
 

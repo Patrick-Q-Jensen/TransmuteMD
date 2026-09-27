@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const maximumOrderedListMarker = 999_999_999
+
 // Document contains semantic blocks in reading order.
 type Document struct {
 	Blocks []Block
@@ -68,6 +70,62 @@ func (h *Heading) validate() error {
 	}
 	if strings.ContainsAny(h.Text, "\r\n") {
 		return errors.New("heading text must be a single line")
+	}
+	return nil
+}
+
+// ListKind identifies the semantic ordering of a list.
+type ListKind uint8
+
+const (
+	// ListKindUnordered identifies a bulleted list.
+	ListKindUnordered ListKind = iota + 1
+	// ListKindOrdered identifies a numbered list.
+	ListKindOrdered
+)
+
+// List is a flat sequence of plain-text items.
+type List struct {
+	Kind  ListKind
+	Start int
+	Items []string
+}
+
+func (*List) isBlock() {}
+
+func (l *List) validate() error {
+	if l == nil {
+		return errors.New("list must not be nil")
+	}
+	switch l.Kind {
+	case ListKindUnordered:
+		if l.Start != 0 {
+			return errors.New("unordered list start must be zero")
+		}
+	case ListKindOrdered:
+		if l.Start < 0 || l.Start > maximumOrderedListMarker {
+			return fmt.Errorf(
+				"ordered list start must be between 0 and %d",
+				maximumOrderedListMarker,
+			)
+		}
+		if len(l.Items) > 0 &&
+			len(l.Items)-1 > maximumOrderedListMarker-l.Start {
+			return fmt.Errorf(
+				"ordered list markers must not exceed %d",
+				maximumOrderedListMarker,
+			)
+		}
+	default:
+		return fmt.Errorf("unsupported list kind %d", l.Kind)
+	}
+	if len(l.Items) == 0 {
+		return errors.New("list must contain at least one item")
+	}
+	for index, item := range l.Items {
+		if item == "" {
+			return fmt.Errorf("list item %d text must not be empty", index+1)
+		}
 	}
 	return nil
 }

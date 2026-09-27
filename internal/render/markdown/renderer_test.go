@@ -57,6 +57,47 @@ func TestRendererWritesHeadingAndParagraph(t *testing.T) {
 	}
 }
 
+func TestRendererWritesOrderedAndUnorderedLists(t *testing.T) {
+	t.Parallel()
+
+	doc := &document.Document{
+		Blocks: []document.Block{
+			&document.Paragraph{Text: "Intro."},
+			&document.List{
+				Kind: document.ListKindUnordered,
+				Items: []string{
+					"First *literal* item",
+					"# Not a heading\ncontinued",
+				},
+			},
+			&document.List{
+				Kind:  document.ListKindOrdered,
+				Start: 3,
+				Items: []string{"Third item", "Fourth item"},
+			},
+		},
+	}
+	before := cloneDocument(*doc)
+	var output bytes.Buffer
+
+	err := markdown.NewRenderer().Render(context.Background(), doc, &output)
+	if err != nil {
+		t.Fatalf("Render() returned an unexpected error: %v", err)
+	}
+	want := "Intro.\n\n" +
+		"- First \\*literal\\* item\n" +
+		"- \\# Not a heading\n" +
+		"  continued\n\n" +
+		"3. Third item\n" +
+		"4. Fourth item\n"
+	if got := output.String(); got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+	if !reflect.DeepEqual(*doc, before) {
+		t.Fatal("Render() mutated its input document")
+	}
+}
+
 func TestRendererEscapesMarkdownAndNormalizesLineEndings(t *testing.T) {
 	t.Parallel()
 
@@ -125,6 +166,17 @@ func TestRendererRejectsInvalidInputBeforeWriting(t *testing.T) {
 			doc: &document.Document{
 				Blocks: []document.Block{
 					&document.Paragraph{Text: string([]byte{0xff})},
+				},
+			},
+		},
+		{
+			name: "invalid UTF-8 list item",
+			doc: &document.Document{
+				Blocks: []document.Block{
+					&document.List{
+						Kind:  document.ListKindUnordered,
+						Items: []string{string([]byte{0xff})},
+					},
 				},
 			},
 		},
@@ -238,8 +290,16 @@ func cloneDocument(doc document.Document) document.Document {
 	clone := doc
 	clone.Blocks = append([]document.Block(nil), doc.Blocks...)
 	for index, block := range clone.Blocks {
-		if paragraph, ok := block.(*document.Paragraph); ok {
-			copied := *paragraph
+		switch typed := block.(type) {
+		case *document.Paragraph:
+			copied := *typed
+			clone.Blocks[index] = &copied
+		case *document.Heading:
+			copied := *typed
+			clone.Blocks[index] = &copied
+		case *document.List:
+			copied := *typed
+			copied.Items = append([]string(nil), typed.Items...)
 			clone.Blocks[index] = &copied
 		}
 	}

@@ -14,6 +14,15 @@ func TestDocumentValidate(t *testing.T) {
 		Blocks: []document.Block{
 			&document.Heading{Level: 1, Text: "Title"},
 			&document.Paragraph{Text: "A plain paragraph."},
+			&document.List{
+				Kind:  document.ListKindUnordered,
+				Items: []string{"First item", "Second item"},
+			},
+			&document.List{
+				Kind:  document.ListKindOrdered,
+				Start: 3,
+				Items: []string{"Third item", "Fourth item"},
+			},
 		},
 	}
 
@@ -86,5 +95,35 @@ func TestDocumentValidateRejectsNilParagraph(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "paragraph must not be nil") {
 		t.Fatalf("Validate() error = %q, want nil-paragraph detail", err)
+	}
+}
+
+func TestDocumentValidateRejectsInvalidList(t *testing.T) {
+	t.Parallel()
+
+	var nilList *document.List
+	tests := []struct {
+		name string
+		list *document.List
+	}{
+		{name: "nil", list: nilList},
+		{name: "unknown kind", list: &document.List{Kind: document.ListKind(99), Items: []string{"item"}}},
+		{name: "unordered start", list: &document.List{Kind: document.ListKindUnordered, Start: 1, Items: []string{"item"}}},
+		{name: "negative ordered start", list: &document.List{Kind: document.ListKindOrdered, Start: -1, Items: []string{"item"}}},
+		{name: "oversized ordered start", list: &document.List{Kind: document.ListKindOrdered, Start: 1_000_000_000, Items: []string{"item"}}},
+		{name: "oversized ordered range", list: &document.List{Kind: document.ListKindOrdered, Start: 999_999_999, Items: []string{"item", "item"}}},
+		{name: "no items", list: &document.List{Kind: document.ListKindUnordered}},
+		{name: "empty item", list: &document.List{Kind: document.ListKindUnordered, Items: []string{""}}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			doc := document.Document{Blocks: []document.Block{test.list}}
+			if err := doc.Validate(); err == nil {
+				t.Fatalf("Validate() returned nil for invalid list %+v", test.list)
+			}
+		})
 	}
 }

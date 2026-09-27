@@ -78,6 +78,17 @@ func validateBlocks(ctx context.Context, doc *document.Document) error {
 			text = typed.Text
 		case *document.Heading:
 			text = typed.Text
+		case *document.List:
+			for itemIndex, item := range typed.Items {
+				if !utf8.ValidString(item) {
+					return fmt.Errorf(
+						"render Markdown block %d list item %d: text is not valid UTF-8",
+						index+1,
+						itemIndex+1,
+					)
+				}
+			}
+			continue
 		default:
 			return fmt.Errorf(
 				"render Markdown block %d: unsupported block type %T",
@@ -102,9 +113,37 @@ func renderBlock(ctx context.Context, block document.Block) (string, error) {
 			return "", err
 		}
 		return strings.Repeat("#", typed.Level) + " " + content, nil
+	case *document.List:
+		return renderList(ctx, typed)
 	default:
 		return "", fmt.Errorf("unsupported block type %T", block)
 	}
+}
+
+func renderList(ctx context.Context, list *document.List) (string, error) {
+	var result strings.Builder
+	for index, item := range list.Items {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		if index > 0 {
+			result.WriteByte('\n')
+		}
+
+		prefix := "- "
+		if list.Kind == document.ListKindOrdered {
+			prefix = fmt.Sprintf("%d. ", list.Start+index)
+		}
+		content, err := escapeParagraph(ctx, normalizeLineEndings(item))
+		if err != nil {
+			return "", fmt.Errorf("render list item %d: %w", index+1, err)
+		}
+		continuationIndent := strings.Repeat(" ", len(prefix))
+		content = strings.ReplaceAll(content, "\n", "\n"+continuationIndent)
+		result.WriteString(prefix)
+		result.WriteString(content)
+	}
+	return result.String(), nil
 }
 
 func writeString(ctx context.Context, output io.Writer, content string) error {

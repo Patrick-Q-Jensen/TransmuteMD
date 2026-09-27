@@ -123,6 +123,14 @@ or above-normal spacing becomes a heading; a bold-only line requires strong
 spacing on both sides. Conservative size ratios map detected headings to
 levels 1 through 3, while ordinary emphasized lines remain paragraph text.
 
+List inference recognizes common ASCII and Unicode unordered markers and
+decimal ordered markers followed by whitespace. Adjacent marker-aligned items
+of the same kind form a flat semantic list; ordered items must increment
+without gaps. Nearby lines indented beyond the marker become item
+continuations. Differently indented markers start separate lists rather than
+inferring unsupported nesting, and ambiguous unmarked lines remain
+paragraphs.
+
 ### Rendering
 
 The renderer converts the semantic document to Markdown. It owns Markdown
@@ -134,7 +142,10 @@ separates paragraphs with one blank line, and terminates non-empty output with
 LF. Cancellation, short writes, and writer failures are returned with block
 context; transactional publication remains the application's responsibility.
 Detected headings render as escaped ATX headings followed by the same
-single-blank-line block separation used for paragraphs.
+single-blank-line block separation used for paragraphs. Flat semantic lists
+render with `-` markers or preserved decimal starting numbers. Item text is
+escaped as plain text, and explicit item line breaks receive Markdown
+continuation indentation.
 
 ## 6. Package boundaries
 
@@ -270,9 +281,9 @@ reading order. Style fields use zero values when unavailable so engines are
 not required to expose backend-specific font data.
 
 The semantic model is an ordered set of blocks owned by `internal/document`.
-Plain paragraphs and validated level 1 through 6 headings are currently
-defined. Later list work will add block types without exposing extraction
-details to renderers.
+It defines plain paragraphs, validated level 1 through 6 headings, and flat
+ordered or unordered lists of plain-text items. Ordered lists retain their
+starting number. The model contains no extraction-engine details.
 
 ## 8. Engine selection and lifecycle
 

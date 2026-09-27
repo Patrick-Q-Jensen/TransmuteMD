@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -21,11 +22,13 @@ const (
 	paragraphIndentRatio    = 0.75
 	shortLineGapRatio       = 2
 	shortLineWidthRatio     = 0.15
+	listMarkerAlignRatio    = 0.5
+	maximumListMarkerDigits = 9
 )
 
 var errNilLayout = errors.New("layout must not be nil")
 
-// BasicAnalyzer produces plain paragraphs using deterministic single-column
+// BasicAnalyzer produces semantic blocks using deterministic single-column
 // reading-order heuristics.
 type BasicAnalyzer struct{}
 
@@ -36,7 +39,7 @@ func NewBasicAnalyzer() *BasicAnalyzer {
 	return &BasicAnalyzer{}
 }
 
-// Analyze orders physical text and groups nearby lines into paragraphs.
+// Analyze orders physical text and groups lines into semantic blocks.
 func (*BasicAnalyzer) Analyze(
 	ctx context.Context,
 	layout *document.Layout,
@@ -259,13 +262,21 @@ func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error
 	headingLevels := detectHeadingLevels(lines)
 	pageLeft, pageRight := textMargins(lines, headingLevels)
 	var paragraph []textLine
+	var list *pendingList
 
-	flush := func() {
+	flushParagraph := func() {
 		if len(paragraph) == 0 {
 			return
 		}
 		blocks = append(blocks, &document.Paragraph{Text: joinWrappedLines(paragraph)})
 		paragraph = paragraph[:0]
+	}
+	flushList := func() {
+		if list == nil {
+			return
+		}
+		blocks = append(blocks, list.block())
+		list = nil
 	}
 
 	for index, line := range lines {
@@ -276,22 +287,166 @@ func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error
 			continue
 		}
 		if headingLevels[index] != 0 {
-			flush()
+			flushParagraph()
+			flushList()
 			blocks = append(blocks, &document.Heading{
 				Level: headingLevels[index],
 				Text:  line.text,
 			})
 			continue
 		}
+		if item, ok := detectListItem(line.text); ok {
+			flushParagraph()
+			if list != nil && !list.accepts(item, line) {
+				flushList()
+			}
+			if list == nil {
+				list = newPendingList(item, line)
+			} else {
+				list.append(item, line)
+			}
+			continue
+		}
+		if list != nil {
+			if list.acceptsContinuation(line) {
+				list.appendContinuation(line)
+				continue
+			}
+			flushList()
+		}
 		if len(paragraph) > 0 &&
 			startsNewParagraph(paragraph[len(paragraph)-1], line, pageLeft, pageRight) {
-			flush()
+			flushParagraph()
 		}
 		paragraph = append(paragraph, line)
 	}
-	flush()
+	flushParagraph()
+	flushList()
 
 	return blocks, nil
+}
+
+type detectedListItem struct {
+	kind    document.ListKind
+	ordinal int
+	text    string
+}
+
+type pendingList struct {
+	kind       document.ListKind
+	start      int
+	markerLeft float64
+	markerSize float64
+	items      [][]textLine
+}
+
+func newPendingList(item detectedListItem, line textLine) *pendingList {
+	list := &pendingList{
+		kind:       item.kind,
+		start:      item.ordinal,
+		markerLeft: line.left,
+		markerSize: line.scale(),
+	}
+	list.append(item, line)
+	return list
+}
+
+func (list *pendingList) accepts(item detectedListItem, line textLine) bool {
+	if item.kind != list.kind {
+		return false
+	}
+	alignmentTolerance := math.Max(list.markerSize, line.scale()) *
+		listMarkerAlignRatio
+	if math.Abs(line.left-list.markerLeft) > alignmentTolerance {
+		return false
+	}
+	return item.kind != document.ListKindOrdered ||
+		item.ordinal == list.start+len(list.items)
+}
+
+func (list *pendingList) acceptsContinuation(line textLine) bool {
+	item := list.items[len(list.items)-1]
+	previous := item[len(item)-1]
+	lineHeight := math.Max(
+		previous.bottom-previous.top,
+		line.bottom-line.top,
+	)
+	if lineHeight <= 0 ||
+		line.top-previous.bottom > lineHeight*paragraphGapRatio {
+		return false
+	}
+	return line.left > list.markerLeft+lineHeight*paragraphIndentRatio
+}
+
+func (list *pendingList) append(item detectedListItem, line textLine) {
+	line.text = item.text
+	list.items = append(list.items, []textLine{line})
+}
+
+func (list *pendingList) appendContinuation(line textLine) {
+	last := len(list.items) - 1
+	list.items[last] = append(list.items[last], line)
+}
+
+func (list *pendingList) block() *document.List {
+	items := make([]string, len(list.items))
+	for index, lines := range list.items {
+		items[index] = joinWrappedLines(lines)
+	}
+	return &document.List{
+		Kind:  list.kind,
+		Start: list.start,
+		Items: items,
+	}
+}
+
+func detectListItem(text string) (detectedListItem, bool) {
+	first, firstSize := utf8.DecodeRuneInString(text)
+	switch first {
+	case '-', '*', '+', '\u2022', '\u25e6', '\u25aa':
+		content, ok := listItemContent(text, firstSize)
+		return detectedListItem{
+			kind: document.ListKindUnordered,
+			text: content,
+		}, ok
+	}
+
+	digitEnd := 0
+	for digitEnd < len(text) &&
+		digitEnd < maximumListMarkerDigits &&
+		text[digitEnd] >= '0' &&
+		text[digitEnd] <= '9' {
+		digitEnd++
+	}
+	if digitEnd == 0 || digitEnd >= len(text) ||
+		text[digitEnd] != '.' && text[digitEnd] != ')' {
+		return detectedListItem{}, false
+	}
+	content, ok := listItemContent(text, digitEnd+1)
+	if !ok {
+		return detectedListItem{}, false
+	}
+	ordinal, err := strconv.Atoi(text[:digitEnd])
+	if err != nil {
+		return detectedListItem{}, false
+	}
+	return detectedListItem{
+		kind:    document.ListKindOrdered,
+		ordinal: ordinal,
+		text:    content,
+	}, true
+}
+
+func listItemContent(text string, markerEnd int) (string, bool) {
+	if markerEnd >= len(text) {
+		return "", false
+	}
+	next, _ := utf8.DecodeRuneInString(text[markerEnd:])
+	if !unicode.IsSpace(next) {
+		return "", false
+	}
+	content := strings.TrimSpace(text[markerEnd:])
+	return content, content != ""
 }
 
 func textMargins(lines []textLine, headingLevels []int) (float64, float64) {
@@ -299,6 +454,9 @@ func textMargins(lines []textLine, headingLevels []int) (float64, float64) {
 	right := math.Inf(-1)
 	for index, line := range lines {
 		if line.text == "" || headingLevels[index] != 0 {
+			continue
+		}
+		if _, ok := detectListItem(line.text); ok {
 			continue
 		}
 		left = math.Min(left, line.left)
@@ -318,6 +476,9 @@ func detectHeadingLevels(lines []textLine) []int {
 
 	for index, line := range lines {
 		if line.text == "" || !hasHeadingSpacing(lines, index, spacingThreshold) {
+			continue
+		}
+		if _, ok := detectListItem(line.text); ok {
 			continue
 		}
 
