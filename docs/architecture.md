@@ -452,6 +452,12 @@ constructed deterministically in tests. Keeping these edge-case inputs
 self-authored and generated in memory avoids provenance ambiguity while
 exercising the real embedded PDFium backend.
 
+End-to-end benchmarks run the generated simple and Phase 2 documents through
+extraction, analysis, rendering, and an in-memory transactional destination.
+They report elapsed time, Go allocations, allocated bytes, and a sampled peak
+increase in Go heap usage. The peak metric is an in-process regression
+indicator, not total process RSS or a cross-machine absolute guarantee.
+
 Test fixtures must have known redistribution rights and should be small enough
 to keep the repository practical.
 

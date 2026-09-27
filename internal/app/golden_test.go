@@ -117,7 +117,7 @@ func TestGeneratedPDFsMatchMarkdownGoldens(t *testing.T) {
 	}
 }
 
-func repositoryRoot(t *testing.T) string {
+func repositoryRoot(t testing.TB) string {
 	t.Helper()
 
 	_, sourceFile, _, ok := runtime.Caller(0)

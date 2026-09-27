@@ -189,7 +189,7 @@ adapter can be replaced without redesigning the pipeline.
       is exposed.
 - [x] Evaluate native PDFium against the same corpus and contract tests.
 - [x] Document unsupported PDF features and expected degradation.
-- [ ] Benchmark representative documents for time and peak memory.
+- [x] Benchmark representative documents for time and peak memory.
 
 ## Phase 4: Public releases
 
@@ -273,3 +273,4 @@ A task is complete when:
 | 2026-09-27 | Evaluated native PDFium and retained the embedded WASM backend because native modes violate current build or distribution constraints. |
 | 2026-09-27 | Closed the conditional engine-selection item without adding a one-choice CLI option; selection remains internal until another backend is accepted. |
 | 2026-09-27 | Documented supported PDF content, unsupported features, conservative degradation, warnings, and extraction limits. |
+| 2026-09-27 | Added end-to-end benchmarks for representative generated PDFs with timing, allocation, and sampled peak Go-heap metrics. |
