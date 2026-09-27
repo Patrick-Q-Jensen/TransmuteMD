@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/extract"
+	pdfiumerrors "github.com/klippa-app/go-pdfium/errors"
 	"github.com/klippa-app/go-pdfium/references"
 	"github.com/klippa-app/go-pdfium/requests"
 )
@@ -36,7 +37,7 @@ func (r *Runtime) withDocument(
 		return errInvalidSourceSize
 	}
 	if size == 0 {
-		return errEmptySource
+		return fmt.Errorf("%w: %w", extract.ErrInvalidDocument, errEmptySource)
 	}
 
 	reader := io.NewSectionReader(source, 0, size)
@@ -46,7 +47,7 @@ func (r *Runtime) withDocument(
 			FileReaderSize: size,
 		})
 		if err != nil {
-			return fmt.Errorf("open PDF document: %w", err)
+			return fmt.Errorf("open PDF document: %w", classifyOpenError(err))
 		}
 
 		defer func() {
@@ -60,4 +61,17 @@ func (r *Runtime) withDocument(
 
 		return operation(worker, opened.Document)
 	})
+}
+
+func classifyOpenError(err error) error {
+	switch {
+	case errors.Is(err, pdfiumerrors.ErrPassword),
+		errors.Is(err, pdfiumerrors.ErrSecurity):
+		return fmt.Errorf("%w: PDFium reported %v", extract.ErrEncryptedDocument, err)
+	case errors.Is(err, pdfiumerrors.ErrFile),
+		errors.Is(err, pdfiumerrors.ErrFormat):
+		return fmt.Errorf("%w: PDFium reported %v", extract.ErrInvalidDocument, err)
+	default:
+		return err
+	}
 }

@@ -19,6 +19,11 @@ var (
 	errNilDestination = errors.New("destination must not be nil")
 	errNilLayout      = errors.New("extractor returned a nil layout")
 	errNilDocument    = errors.New("analyzer returned a nil document")
+
+	// ErrNoExtractableText indicates that analysis found no semantic text.
+	ErrNoExtractableText = errors.New(
+		"document contains no extractable text; scanned documents require OCR",
+	)
 )
 
 // Converter coordinates extraction, analysis, rendering, and output commit.
@@ -96,6 +101,9 @@ func (converter *Converter) Convert(
 	}
 	if err := semantic.Validate(); err != nil {
 		return fmt.Errorf("validate analyzed document: %w", err)
+	}
+	if len(semantic.Blocks) == 0 {
+		return ErrNoExtractableText
 	}
 
 	var rendered bytes.Buffer

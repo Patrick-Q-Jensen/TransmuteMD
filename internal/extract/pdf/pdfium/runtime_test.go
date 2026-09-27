@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/extract"
+	pdfiumerrors "github.com/klippa-app/go-pdfium/errors"
 	"github.com/klippa-app/go-pdfium/references"
 	"github.com/klippa-app/go-pdfium/requests"
 	"github.com/klippa-app/go-pdfium/responses"
@@ -339,6 +341,62 @@ func TestRuntimeWithDocumentClosesInstanceAfterOpenFailure(t *testing.T) {
 	}
 }
 
+func TestRuntimeWithDocumentClassifiesOpenFailure(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		openErr  error
+		expected error
+	}{
+		{
+			name:     "incorrect format",
+			openErr:  pdfiumerrors.ErrFormat,
+			expected: extract.ErrInvalidDocument,
+		},
+		{
+			name:     "unreadable PDF structure",
+			openErr:  pdfiumerrors.ErrFile,
+			expected: extract.ErrInvalidDocument,
+		},
+		{
+			name:     "password protected",
+			openErr:  pdfiumerrors.ErrPassword,
+			expected: extract.ErrEncryptedDocument,
+		},
+		{
+			name:     "unsupported encryption",
+			openErr:  pdfiumerrors.ErrSecurity,
+			expected: extract.ErrEncryptedDocument,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			log := &eventLog{}
+			runtime := &Runtime{
+				pool: &poolStub{
+					log:    log,
+					worker: &instanceStub{log: log, openErr: test.openErr},
+				},
+			}
+			err := runtime.withDocument(
+				context.Background(),
+				bytes.NewReader([]byte("%PDF-source")),
+				func(instance, references.FPDF_DOCUMENT) error {
+					t.Fatal("operation called after open failure")
+					return nil
+				},
+			)
+			if !errors.Is(err, test.expected) {
+				t.Fatalf("withDocument() error = %v, want %v", err, test.expected)
+			}
+		})
+	}
+}
+
 func TestRuntimeWithDocumentJoinsOperationAndCleanupErrors(t *testing.T) {
 	t.Parallel()
 
@@ -390,6 +448,9 @@ func TestRuntimeWithDocumentRejectsEmptySource(t *testing.T) {
 
 	if !errors.Is(err, errEmptySource) {
 		t.Fatalf("withDocument() error = %v, want %v", err, errEmptySource)
+	}
+	if !errors.Is(err, extract.ErrInvalidDocument) {
+		t.Fatalf("withDocument() error = %v, want %v", err, extract.ErrInvalidDocument)
 	}
 	if got := log.snapshot(); len(got) != 0 {
 		t.Fatalf("events = %v, want no PDFium calls", got)

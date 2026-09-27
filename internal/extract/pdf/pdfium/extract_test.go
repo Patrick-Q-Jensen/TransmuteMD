@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/extract"
 	"github.com/klippa-app/go-pdfium/responses"
 )
 
@@ -251,6 +252,9 @@ func TestExtractorRejectsDocumentWithoutPages(t *testing.T) {
 	)
 	if !errors.Is(err, errNoPages) {
 		t.Fatalf("Extract() error = %v, want %v", err, errNoPages)
+	}
+	if !errors.Is(err, extract.ErrInvalidDocument) {
+		t.Fatalf("Extract() error = %v, want %v", err, extract.ErrInvalidDocument)
 	}
 }
 

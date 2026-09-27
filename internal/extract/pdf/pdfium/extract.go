@@ -93,7 +93,7 @@ func extractLayout(
 		return errNilPageCount
 	}
 	if pageCount.PageCount <= 0 {
-		return errNoPages
+		return fmt.Errorf("%w: %w", extract.ErrInvalidDocument, errNoPages)
 	}
 
 	layout.Pages = make([]document.Page, 0, pageCount.PageCount)

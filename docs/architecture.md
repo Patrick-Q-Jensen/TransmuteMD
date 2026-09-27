@@ -309,6 +309,13 @@ unless an explicit future option permits best-effort conversion and reports
 the omissions. The initial error categories and process exit codes are defined
 in the [CLI contract](cli-contract.md).
 
+The extraction boundary exposes engine-neutral invalid-document and
+encrypted-document sentinels. The PDFium adapter maps incorrect-format,
+unreadable-structure, password, and unsupported-encryption failures to those
+sentinels without exposing backend error types. Application orchestration
+rejects semantic documents with no blocks as textless before rendering or
+committing output, and its error explains that scanned documents require OCR.
+
 ## 10. Testing strategy
 
 - **Unit tests:** contracts, model validation, semantic analysis, coordinate

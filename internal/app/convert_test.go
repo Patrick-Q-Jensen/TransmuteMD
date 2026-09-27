@@ -159,6 +159,32 @@ func TestConverterPreservesDestinationError(t *testing.T) {
 	}
 }
 
+func TestConverterRejectsTextlessDocumentWithoutCommitting(t *testing.T) {
+	t.Parallel()
+
+	converter, err := app.NewConverter(
+		extractorStub{layout: validLayout()},
+		analyzerStub{document: &document.Document{}},
+		rendererStub{content: "must not render"},
+	)
+	if err != nil {
+		t.Fatalf("NewConverter() returned an unexpected error: %v", err)
+	}
+	destination := &destinationStub{}
+
+	err = converter.Convert(
+		context.Background(),
+		bytes.NewReader([]byte("source")),
+		destination,
+	)
+	if !errors.Is(err, app.ErrNoExtractableText) {
+		t.Fatalf("Convert() error = %v, want %v", err, app.ErrNoExtractableText)
+	}
+	if destination.commits != 0 {
+		t.Fatalf("destination commit count = %d, want 0", destination.commits)
+	}
+}
+
 func TestNewConverterRejectsNilStages(t *testing.T) {
 	t.Parallel()
 
