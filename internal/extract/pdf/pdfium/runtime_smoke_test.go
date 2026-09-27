@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/analyze"
+	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/document"
 )
 
 func TestRuntimeOpensGeneratedPDF(t *testing.T) {
@@ -56,5 +59,20 @@ func TestRuntimeOpensGeneratedPDF(t *testing.T) {
 	}
 	if got, want := text.String(), "TransmuteMD PDFium smoke test"; !strings.Contains(got, want) {
 		t.Fatalf("extracted text = %q, want it to contain %q", got, want)
+	}
+
+	analyzed, err := analyze.NewBasicAnalyzer().Analyze(ctx, layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got, want := len(analyzed.Blocks), 1; got != want {
+		t.Fatalf("analyzed block count = %d, want %d", got, want)
+	}
+	paragraph, ok := analyzed.Blocks[0].(*document.Paragraph)
+	if !ok {
+		t.Fatalf("analyzed block has type %T, want *document.Paragraph", analyzed.Blocks[0])
+	}
+	if got, want := paragraph.Text, "TransmuteMD PDFium smoke test"; got != want {
+		t.Fatalf("analyzed paragraph = %q, want %q", got, want)
 	}
 }

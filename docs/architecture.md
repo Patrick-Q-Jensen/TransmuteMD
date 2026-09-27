@@ -96,10 +96,24 @@ include:
 Analysis should be deterministic and operate entirely on engine-neutral
 models, allowing focused unit tests without loading a PDF.
 
+The initial analyzer uses page order and single-column geometry. It clusters
+text runs into lines using vertical overlap, sorts each line from left to
+right, preserves explicit whitespace, and infers missing word spaces from
+horizontal gaps. Nearby lines become one plain paragraph, while larger
+vertical gaps and page boundaries start a new paragraph. Zero-area
+whitespace-only control runs are ignored. More advanced wrapped-paragraph,
+rotation, and multi-column behavior remains separate analysis work.
+
 ### Rendering
 
 The renderer converts the semantic document to Markdown. It owns Markdown
 escaping, whitespace rules, and syntax choices, but no PDF-specific behavior.
+The initial Markdown renderer validates the complete semantic document and
+its UTF-8 text before writing. It escapes plain paragraph text so Markdown
+syntax is not inferred accidentally, normalizes embedded line endings to LF,
+separates paragraphs with one blank line, and terminates non-empty output with
+LF. Cancellation, short writes, and writer failures are returned with block
+context; transactional publication remains the application's responsibility.
 
 ## 6. Package boundaries
 
@@ -186,6 +200,15 @@ the writer. Because a renderer may write before encountering an error,
 application orchestration renders into a private buffer before committing
 bytes to a file or standard output. This preserves the CLI's transactional
 output contract without forcing every renderer to buffer independently.
+
+The application converter validates each stage result and commits the
+rendered buffer through an engine-neutral destination only after extraction,
+analysis, and rendering succeed. Writer destinations support standard output
+without taking ownership of the writer. File destinations create a temporary
+file in the destination directory, write and synchronize its complete
+contents, close it, then rename it into place. Existing files are preserved
+unless replacement is explicitly enabled, and temporary files are removed on
+all reported failure paths.
 
 Stage-specific option types will be introduced only when a concrete behavior
 requires them.

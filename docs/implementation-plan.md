@@ -151,9 +151,9 @@ Markdown text using the embedded PDFium WebAssembly backend.
       because upstream does not identify the exact PDFium revision, build
       tool versions, or complete incorporated third-party notice set.
 - [x] Extract page text and geometry into the neutral layout model.
-- [ ] Implement basic reading order and paragraph grouping.
-- [ ] Implement plain paragraphs in the Markdown renderer.
-- [ ] Support writing to stdout and to a specified output file.
+- [x] Implement basic reading order and paragraph grouping.
+- [x] Implement plain paragraphs in the Markdown renderer.
+- [x] Support writing to stdout and to a specified output file.
 - [ ] Return actionable errors for invalid, encrypted, and textless input.
 - [~] Add one licensed simple-PDF fixture and an end-to-end golden test. The
       generated fixture and provenance validation are complete; the golden
@@ -250,3 +250,6 @@ A task is complete when:
 | 2026-09-26 | Integrated the embedded PDFium WebAssembly runtime with isolated filesystem access, cancellation, deterministic cleanup, and a generated smoke-test fixture. |
 | 2026-09-26 | Added the initial dependency inventory and notice bundle; blocked binary distribution pending the complete embedded PDFium provenance and license audit. |
 | 2026-09-26 | Implemented PDFium page, character geometry, rotation, and font evidence extraction into the neutral layout model. |
+| 2026-09-26 | Added deterministic single-column reading order, whitespace reconstruction, and basic paragraph grouping. |
+| 2026-09-27 | Implemented UTF-8 plain-paragraph Markdown rendering with escaping, LF normalization, cancellation, and explicit write errors. |
+| 2026-09-27 | Added engine-neutral conversion orchestration with buffered stdout and transactional temporary-file output. |
