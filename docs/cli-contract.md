@@ -60,6 +60,8 @@ to replace.
   conversion error without prompting for a password.
 - A PDF with no extractable text produces a clear conversion error. This
   commonly indicates a scanned document that will require future OCR support.
+- Unsupported content and conservative fallbacks follow
+  [PDF support and degradation](pdf-support.md).
 
 ## 6. Output behavior
 

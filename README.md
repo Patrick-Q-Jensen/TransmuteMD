@@ -31,6 +31,15 @@ installed PDF engine or runtime. Binary distribution remains blocked by the
 embedded PDFium provenance and notice audit described below; development
 builds are functional.
 
+## PDF support
+
+TransmuteMD currently targets born-digital, unencrypted PDFs with extractable
+text. It does not perform OCR, extract images, or accept passwords. Tables,
+code-like regions, uncertain layouts, and unsupported annotations degrade
+conservatively to plain text or geometric reading order rather than invented
+structure. See [PDF support and degradation](docs/pdf-support.md) for the
+complete behavior and default safety limits.
+
 ## Planned project layout
 
 ```text
@@ -72,6 +81,7 @@ required.
 - [Architecture](docs/architecture.md)
 - [Architecture decisions](docs/decisions/README.md)
 - [Initial CLI contract](docs/cli-contract.md)
+- [PDF support and degradation](docs/pdf-support.md)
 - [Dependency and notice policy](docs/dependency-and-notice-policy.md)
 - [Implementation plan](docs/implementation-plan.md)
 
