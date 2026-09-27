@@ -439,6 +439,11 @@ committing output, and its error explains that scanned documents require OCR.
 - **Corpus tests:** evaluate multi-column text, unusual fonts, ligatures,
   rotation, tables, forms, encryption, malformed files, and image-only pages.
 
+Small malformed, encrypted, rotated, subset-font, and image-only PDFs are
+constructed deterministically in tests. Keeping these edge-case inputs
+self-authored and generated in memory avoids provenance ambiguity while
+exercising the real embedded PDFium backend.
+
 Test fixtures must have known redistribution rights and should be small enough
 to keep the repository practical.
 

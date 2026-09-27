@@ -182,7 +182,7 @@ adapter can be replaced without redesigning the pipeline.
 - [x] Add limits for file size, page count, memory-sensitive operations, and
       pathological content where the backend permits.
 - [x] Verify cancellation and cleanup on success and failure paths.
-- [ ] Test malformed, encrypted, rotated, font-subset, and image-only PDFs.
+- [x] Test malformed, encrypted, rotated, font-subset, and image-only PDFs.
 - [ ] Add fuzz tests for project-owned parsing and transformation boundaries.
 - [ ] Add an explicit engine-selection mechanism if a second backend is
       implemented.
@@ -267,3 +267,4 @@ A task is complete when:
 | 2026-09-27 | Added a backend-independent extractor contract suite and registered the PDFium WASM adapter against it. |
 | 2026-09-27 | Added validated extraction limits for source size, pages, page geometry, character runs, and annotations. |
 | 2026-09-27 | Verified instance, document, annotation, and output cleanup across success, failure, and cancellation paths. |
+| 2026-09-27 | Added deterministic difficult-input tests for malformed, encrypted, rotated, subset-font, and image-only PDFs. |
