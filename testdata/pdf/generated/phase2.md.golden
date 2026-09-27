@@ -1,0 +1,27 @@
+# Structured document
+
+A wrapped paragraph begins here and continues on the following line.
+
+- First unordered item
+- Second unordered item
+
+Two-column section across the page
+
+Left column begins Left column continues.
+
+Right column begins Right column continues.
+
+[Visit the project site for more information about TransmuteMD.](https://example.test/docs)
+
+## Numbered steps
+
+3. Prepare the input.
+4. Convert the document.
+
+The sequence keeps its original starting number.
+
+## Preserved fallbacks
+
+Name Value Status Alpha One Ready Beta Two Done
+
+func main ( ) { return }

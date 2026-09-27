@@ -19,6 +19,31 @@
       "expectedPageCount": 1,
       "expectedText": "TransmuteMD PDFium smoke test",
       "expectedMarkdown": "generated/simple.md.golden"
+    },
+    {
+      "path": "generated/phase2.pdf",
+      "sha256": "0e2f6e68e36294c76472675ed9b876ed2c84ebbe4dac9be302dda9a186e8a363",
+      "purpose": "End-to-end coverage of Phase 2 semantic structure and conservative fallbacks",
+      "features": [
+        "three pages",
+        "wrapped paragraph",
+        "font-based headings",
+        "ordered and unordered lists",
+        "two-column reading order",
+        "repeated headers and page-number footers",
+        "external URI annotation",
+        "table-like text fallback",
+        "monospaced code-like text fallback"
+      ],
+      "origin": "self-authored generated fixture",
+      "generationSource": "generated/generate.go",
+      "generationInstructions": "go run ./testdata/pdf/generated -fixture phase2 -output ./testdata/pdf/generated/phase2.pdf",
+      "author": "TransmuteMD contributors",
+      "copyright": "Copyright (c) 2026 TransmuteMD contributors",
+      "license": "MIT",
+      "expectedPageCount": 3,
+      "expectedText": "Structured document",
+      "expectedMarkdown": "generated/phase2.md.golden"
     }
   ]
 }

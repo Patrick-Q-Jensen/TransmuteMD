@@ -170,7 +170,7 @@ Markdown text using the embedded PDFium WebAssembly backend.
 - [x] Preserve links where reliable source information is available.
 - [x] Define an initial strategy for tables and code-like text.
 - [x] Add diagnostics for uncertain or omitted structures.
-- [ ] Expand the fixture corpus to cover each supported behavior.
+- [x] Expand the fixture corpus to cover each supported behavior.
 - [ ] Add deterministic golden tests for Markdown output.
 
 ## Phase 3: Robustness and engine independence
@@ -262,3 +262,4 @@ A task is complete when:
 | 2026-09-27 | Preserved reliable external PDF link annotations through neutral layout and semantic models into escaped Markdown links. |
 | 2026-09-27 | Adopted ADR-0005: preserve ambiguous table-like and code-like content as text until dedicated high-confidence semantic models exist. |
 | 2026-09-27 | Added engine-neutral structure diagnostics and successful CLI warnings for unsupported links and conservative text fallbacks. |
+| 2026-09-27 | Added a self-authored three-page Phase 2 PDF fixture covering semantic structure, links, repeated furniture, columns, and conservative fallbacks. |
