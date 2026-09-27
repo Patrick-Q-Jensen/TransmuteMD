@@ -108,8 +108,14 @@ text runs into lines using vertical overlap, sorts each line from left to
 right, preserves explicit whitespace, and infers missing word spaces from
 horizontal gaps. Nearby lines become one plain paragraph, while larger
 vertical gaps and page boundaries start a new paragraph. Zero-area
-whitespace-only control runs are ignored. More advanced wrapped-paragraph,
-rotation, and multi-column behavior remains separate analysis work.
+whitespace-only control runs are ignored.
+
+Wrapped-line analysis also uses the observed page text margins. A new
+first-line indent or a short sentence-ending line starts a paragraph even
+when line spacing remains uniform. Otherwise adjacent lines remain in the
+same paragraph, and an ASCII or soft hyphen at a line end is removed when the
+next line begins with a lowercase letter. Rotation and multi-column behavior
+remain separate analysis work.
 
 ### Rendering
 

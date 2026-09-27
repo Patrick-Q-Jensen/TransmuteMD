@@ -162,7 +162,7 @@ Markdown text using the embedded PDFium WebAssembly backend.
 
 **Outcome:** common born-digital documents produce readable, stable Markdown.
 
-- [ ] Preserve paragraph boundaries across wrapped lines.
+- [x] Preserve paragraph boundaries across wrapped lines.
 - [ ] Detect headings using font and spacing evidence.
 - [ ] Detect ordered and unordered lists.
 - [ ] Handle multi-column reading order.
@@ -254,3 +254,4 @@ A task is complete when:
 | 2026-09-27 | Added stable invalid, encrypted, and textless conversion errors that preserve transactional output. |
 | 2026-09-27 | Added an exact Markdown golden test spanning the embedded PDFium runtime through transactional writer output. |
 | 2026-09-27 | Wired and exercised the single-file CLI with content recognition, transactional destinations, resource cleanup, diagnostics, and exit codes. |
+| 2026-09-27 | Refined wrapped-line analysis with indentation, short-line, spacing, and soft-hyphen paragraph heuristics. |

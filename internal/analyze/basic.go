@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/document"
 )
@@ -17,6 +18,9 @@ const (
 	maximumLineCenterRatio  = 0.35
 	wordGapRatio            = 0.2
 	paragraphGapRatio       = 0.9
+	paragraphIndentRatio    = 0.75
+	shortLineGapRatio       = 2
+	shortLineWidthRatio     = 0.15
 )
 
 var errNilLayout = errors.New("layout must not be nil")
@@ -77,6 +81,7 @@ type textLine struct {
 	top    float64
 	bottom float64
 	left   float64
+	right  float64
 	text   string
 }
 
@@ -174,6 +179,7 @@ func newTextLine(run orderedRun) textLine {
 		top:    run.run.Bounds.Top,
 		bottom: run.run.Bounds.Bottom,
 		left:   run.run.Bounds.Left,
+		right:  run.run.Bounds.Right,
 	}
 }
 
@@ -182,6 +188,7 @@ func (line *textLine) add(run orderedRun) {
 	line.top = math.Min(line.top, run.run.Bounds.Top)
 	line.bottom = math.Max(line.bottom, run.run.Bounds.Bottom)
 	line.left = math.Min(line.left, run.run.Bounds.Left)
+	line.right = math.Max(line.right, run.run.Bounds.Right)
 }
 
 func (line *textLine) finish(ctx context.Context) error {
@@ -249,15 +256,15 @@ func compareLines(left, right textLine) int {
 
 func groupParagraphs(ctx context.Context, lines []textLine) ([]document.Block, error) {
 	blocks := make([]document.Block, 0, len(lines))
-	var paragraph strings.Builder
-	var previous textLine
+	pageLeft, pageRight := textMargins(lines)
+	var paragraph []textLine
 
 	flush := func() {
-		if paragraph.Len() == 0 {
+		if len(paragraph) == 0 {
 			return
 		}
-		blocks = append(blocks, &document.Paragraph{Text: paragraph.String()})
-		paragraph.Reset()
+		blocks = append(blocks, &document.Paragraph{Text: joinWrappedLines(paragraph)})
+		paragraph = paragraph[:0]
 	}
 
 	for _, line := range lines {
@@ -267,25 +274,92 @@ func groupParagraphs(ctx context.Context, lines []textLine) ([]document.Block, e
 		if line.text == "" {
 			continue
 		}
-		if paragraph.Len() > 0 {
-			if startsNewParagraph(previous, line) {
-				flush()
-			} else {
-				paragraph.WriteByte(' ')
-			}
+		if len(paragraph) > 0 &&
+			startsNewParagraph(paragraph[len(paragraph)-1], line, pageLeft, pageRight) {
+			flush()
 		}
-		paragraph.WriteString(line.text)
-		previous = line
+		paragraph = append(paragraph, line)
 	}
 	flush()
 
 	return blocks, nil
 }
 
-func startsNewParagraph(previous, current textLine) bool {
+func textMargins(lines []textLine) (float64, float64) {
+	left := math.Inf(1)
+	right := math.Inf(-1)
+	for _, line := range lines {
+		if line.text == "" {
+			continue
+		}
+		left = math.Min(left, line.left)
+		right = math.Max(right, line.right)
+	}
+	return left, right
+}
+
+func startsNewParagraph(
+	previous,
+	current textLine,
+	pageLeft,
+	pageRight float64,
+) bool {
 	gap := current.top - previous.bottom
 	lineHeight := math.Max(previous.bottom-previous.top, current.bottom-current.top)
-	return lineHeight > 0 && gap > lineHeight*paragraphGapRatio
+	if lineHeight > 0 && gap > lineHeight*paragraphGapRatio {
+		return true
+	}
+
+	indentThreshold := lineHeight * paragraphIndentRatio
+	if current.left > pageLeft+indentThreshold &&
+		previous.left <= pageLeft+indentThreshold/2 {
+		return true
+	}
+
+	textWidth := pageRight - pageLeft
+	shortLineGap := math.Max(
+		lineHeight*shortLineGapRatio,
+		textWidth*shortLineWidthRatio,
+	)
+	return endsSentence(previous.text) &&
+		pageRight-previous.right > shortLineGap &&
+		current.left <= pageLeft+indentThreshold
+}
+
+func joinWrappedLines(lines []textLine) string {
+	var result strings.Builder
+	for index, line := range lines {
+		text := line.text
+		if index+1 < len(lines) && endsWithSoftHyphen(text, lines[index+1].text) {
+			text = strings.TrimSuffix(strings.TrimSuffix(text, "-"), "\u00ad")
+		}
+		result.WriteString(text)
+		if index+1 < len(lines) && !endsWithSoftHyphen(line.text, lines[index+1].text) {
+			result.WriteByte(' ')
+		}
+	}
+	return result.String()
+}
+
+func endsSentence(text string) bool {
+	text = strings.TrimRight(text, "\"')]}")
+	if text == "" {
+		return false
+	}
+	switch text[len(text)-1] {
+	case '.', '!', '?', ':', ';':
+		return true
+	default:
+		return false
+	}
+}
+
+func endsWithSoftHyphen(text, next string) bool {
+	if !strings.HasSuffix(text, "-") && !strings.HasSuffix(text, "\u00ad") {
+		return false
+	}
+	first, _ := utf8.DecodeRuneInString(next)
+	return unicode.IsLower(first)
 }
 
 func verticalCenter(bounds document.Rectangle) float64 {

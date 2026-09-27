@@ -92,6 +92,100 @@ func TestBasicAnalyzerUsesVisibleWhitespaceAndIgnoresControlWhitespace(t *testin
 	}
 }
 
+func TestBasicAnalyzerPreservesIndentedParagraphBoundaries(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("First paragraph begins", 20, 10, 190, 20),
+					textRun("and continues across lines.", 10, 24, 190, 34),
+					textRun("Second paragraph starts", 20, 38, 190, 48),
+					textRun("and wraps too.", 10, 52, 105, 62),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+
+	want := []string{
+		"First paragraph begins and continues across lines.",
+		"Second paragraph starts and wraps too.",
+	}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paragraphs = %#v, want %#v", got, want)
+	}
+}
+
+func TestBasicAnalyzerStartsAfterShortSentenceEndingLine(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("The first paragraph wraps across", 10, 10, 190, 20),
+					textRun("a short final line.", 10, 24, 90, 34),
+					textRun("The next paragraph starts here", 10, 38, 190, 48),
+					textRun("and remains wrapped.", 10, 52, 130, 62),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+
+	want := []string{
+		"The first paragraph wraps across a short final line.",
+		"The next paragraph starts here and remains wrapped.",
+	}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paragraphs = %#v, want %#v", got, want)
+	}
+}
+
+func TestBasicAnalyzerJoinsSoftHyphenatedWraps(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("Document trans-", 10, 10, 190, 20),
+					textRun("mutation keeps words readable.", 10, 24, 190, 34),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+
+	want := []string{"Document transmutation keeps words readable."}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paragraphs = %#v, want %#v", got, want)
+	}
+}
+
 func TestBasicAnalyzerReturnsEmptyDocumentForWhitespaceOnlyLayout(t *testing.T) {
 	t.Parallel()
 
