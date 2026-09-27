@@ -352,7 +352,10 @@ small factory or composition layer, not in conversion logic. A future
 `pdfium-native` or pure-Go implementation must satisfy the same extractor
 contract. The Phase 3 [native PDFium evaluation](evaluations/native-pdfium.md)
 did not accept a native backend because the supported CGo modes add a runtime
-library or worker process and platform-specific build requirements.
+library or worker process and platform-specific build requirements. The CLI
+therefore has no engine option while only one backend is available; selection
+will remain an internal composition concern until a second backend is
+accepted.
 
 The adapter is responsible for:
 
