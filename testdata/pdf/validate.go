@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 type manifest struct {
@@ -31,6 +32,7 @@ type fixture struct {
 	License                string   `json:"license"`
 	ExpectedPageCount      int      `json:"expectedPageCount"`
 	ExpectedText           string   `json:"expectedText"`
+	ExpectedMarkdown       string   `json:"expectedMarkdown"`
 }
 
 func main() {
@@ -84,8 +86,10 @@ func validateFixture(root string, fixture fixture) error {
 	if fixture.Author == "" || fixture.Copyright == "" || fixture.License == "" {
 		return errors.New("author, copyright, and license are required")
 	}
-	if fixture.ExpectedPageCount <= 0 || fixture.ExpectedText == "" {
-		return errors.New("expected page count and text are required")
+	if fixture.ExpectedPageCount <= 0 ||
+		fixture.ExpectedText == "" ||
+		fixture.ExpectedMarkdown == "" {
+		return errors.New("expected page count, text, and Markdown path are required")
 	}
 
 	pdfPath, err := resolveWithin(root, fixture.Path)
@@ -111,6 +115,24 @@ func validateFixture(root string, fixture fixture) error {
 	gotDigest := sha256.Sum256(data)
 	if !bytes.Equal(gotDigest[:], wantDigest) {
 		return fmt.Errorf("sha256 mismatch: got %x, want %s", gotDigest, fixture.SHA256)
+	}
+
+	markdownPath, err := resolveWithin(root, fixture.ExpectedMarkdown)
+	if err != nil {
+		return fmt.Errorf("expected Markdown path: %w", err)
+	}
+	markdown, err := os.ReadFile(markdownPath)
+	if err != nil {
+		return fmt.Errorf("read expected Markdown: %w", err)
+	}
+	if len(markdown) == 0 {
+		return errors.New("expected Markdown must not be empty")
+	}
+	if !utf8.Valid(markdown) {
+		return errors.New("expected Markdown must be valid UTF-8")
+	}
+	if bytes.ContainsRune(markdown, '\r') {
+		return errors.New("expected Markdown must use LF line endings")
 	}
 	return nil
 }

@@ -155,9 +155,7 @@ Markdown text using the embedded PDFium WebAssembly backend.
 - [x] Implement plain paragraphs in the Markdown renderer.
 - [x] Support writing to stdout and to a specified output file.
 - [x] Return actionable errors for invalid, encrypted, and textless input.
-- [~] Add one licensed simple-PDF fixture and an end-to-end golden test. The
-      generated fixture and provenance validation are complete; the golden
-      conversion test awaits the vertical slice.
+- [x] Add one licensed simple-PDF fixture and an end-to-end golden test.
 - [ ] Build and manually exercise one self-contained executable.
 
 ## Phase 2: Useful document structure
@@ -254,3 +252,4 @@ A task is complete when:
 | 2026-09-27 | Implemented UTF-8 plain-paragraph Markdown rendering with escaping, LF normalization, cancellation, and explicit write errors. |
 | 2026-09-27 | Added engine-neutral conversion orchestration with buffered stdout and transactional temporary-file output. |
 | 2026-09-27 | Added stable invalid, encrypted, and textless conversion errors that preserve transactional output. |
+| 2026-09-27 | Added an exact Markdown golden test spanning the embedded PDFium runtime through transactional writer output. |

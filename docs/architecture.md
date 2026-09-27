@@ -333,6 +333,11 @@ committing output, and its error explains that scanned documents require OCR.
 Test fixtures must have known redistribution rights and should be small enough
 to keep the repository practical.
 
+The initial golden test converts the self-authored generated PDF through the
+real embedded PDFium runtime, basic analyzer, Markdown renderer, and buffered
+writer destination. Its committed Markdown golden is UTF-8 with an enforced
+LF checkout policy and is referenced by the fixture provenance manifest.
+
 ## 11. Portability and distribution
 
 Initial releases target Windows, Linux, and macOS. CPU architectures must be

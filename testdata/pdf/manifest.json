@@ -17,7 +17,8 @@
       "copyright": "Copyright (c) 2026 TransmuteMD contributors",
       "license": "MIT",
       "expectedPageCount": 1,
-      "expectedText": "TransmuteMD PDFium smoke test"
+      "expectedText": "TransmuteMD PDFium smoke test",
+      "expectedMarkdown": "generated/simple.md.golden"
     }
   ]
 }
