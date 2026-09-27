@@ -331,3 +331,131 @@ func TestNewExtractorRejectsNilRuntime(t *testing.T) {
 		t.Fatalf("NewExtractor() error = %v, want %v", err, errNilRuntime)
 	}
 }
+
+func TestNewExtractorRejectsInvalidLimits(t *testing.T) {
+	t.Parallel()
+
+	limits := extract.DefaultLimits()
+	limits.MaxPages = 0
+	_, err := NewExtractorWithLimits(&Runtime{}, limits)
+	if err == nil {
+		t.Fatal("NewExtractorWithLimits() returned nil for invalid limits")
+	}
+}
+
+func TestExtractorEnforcesSourceSizeBeforeRuntimeAcquisition(t *testing.T) {
+	t.Parallel()
+
+	log := &eventLog{}
+	runtime := &Runtime{pool: &poolStub{log: log}}
+	limits := extract.DefaultLimits()
+	limits.MaxSourceBytes = 3
+	extractor, err := NewExtractorWithLimits(runtime, limits)
+	if err != nil {
+		t.Fatalf("NewExtractorWithLimits() returned an unexpected error: %v", err)
+	}
+
+	_, err = extractor.Extract(
+		context.Background(),
+		bytes.NewReader([]byte("%PDF")),
+	)
+	if !errors.Is(err, extract.ErrLimitExceeded) {
+		t.Fatalf("Extract() error = %v, want %v", err, extract.ErrLimitExceeded)
+	}
+	if events := log.snapshot(); len(events) != 0 {
+		t.Fatalf("runtime events = %v, want none", events)
+	}
+}
+
+func TestExtractorEnforcesPDFiumLimitsAtAvailableBoundaries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		configure      func(*instanceStub, *extract.Limits)
+		forbiddenEvent string
+	}{
+		{
+			name: "page count before page iteration",
+			configure: func(worker *instanceStub, limits *extract.Limits) {
+				worker.pageCount = 2
+				limits.MaxPages = 1
+			},
+			forbiddenEvent: "get page size",
+		},
+		{
+			name: "page dimension before text extraction",
+			configure: func(worker *instanceStub, limits *extract.Limits) {
+				worker.pageSize.Width = 101
+				limits.MaxPageDimension = 100
+			},
+			forbiddenEvent: "get structured text",
+		},
+		{
+			name: "cumulative text runs before mapping",
+			configure: func(worker *instanceStub, limits *extract.Limits) {
+				worker.structuredText.Chars = []*responses.GetPageTextStructuredChar{
+					{Text: "a"},
+					{Text: "b"},
+				}
+				limits.MaxTextRuns = 1
+			},
+			forbiddenEvent: "get annotation count",
+		},
+		{
+			name: "cumulative annotations before enumeration",
+			configure: func(worker *instanceStub, limits *extract.Limits) {
+				worker.annotationCount = 2
+				limits.MaxAnnotations = 1
+			},
+			forbiddenEvent: "get annotation",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			log := &eventLog{}
+			worker := &instanceStub{
+				log:       log,
+				document:  "document",
+				pageCount: 1,
+				pageSize: &responses.FPDF_GetPageSizeByIndex{
+					Page:   0,
+					Width:  100,
+					Height: 100,
+				},
+				structuredText: &responses.GetPageTextStructured{Page: 0},
+			}
+			limits := extract.DefaultLimits()
+			test.configure(worker, &limits)
+			extractor, err := NewExtractorWithLimits(
+				&Runtime{pool: &poolStub{log: log, worker: worker}},
+				limits,
+			)
+			if err != nil {
+				t.Fatalf("NewExtractorWithLimits() returned an unexpected error: %v", err)
+			}
+
+			_, err = extractor.Extract(
+				context.Background(),
+				bytes.NewReader([]byte("%PDF")),
+			)
+			if !errors.Is(err, extract.ErrLimitExceeded) {
+				t.Fatalf(
+					"Extract() error = %v, want %v",
+					err,
+					extract.ErrLimitExceeded,
+				)
+			}
+			if slices.Contains(log.snapshot(), test.forbiddenEvent) {
+				t.Fatalf(
+					"runtime events = %v, must not contain %q",
+					log.snapshot(),
+					test.forbiddenEvent,
+				)
+			}
+		})
+	}
+}

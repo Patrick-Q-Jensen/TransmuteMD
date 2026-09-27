@@ -360,6 +360,8 @@ The adapter is responsible for:
 - translating PDFium output into internal coordinates and units;
 - wrapping errors with operation and page context;
 - detecting password-protected and likely image-only documents where possible.
+- enforcing configured source, page, geometry, text-run, and annotation limits
+  at the earliest backend operation that exposes each measurement.
 
 The `go-pdfium` WebAssembly pool is process-scoped and limited to one worker
 for the initial single-document CLI. Each conversion borrows one instance.
@@ -382,6 +384,14 @@ degrees, rendered font size is preferred over nominal size, negative unknown
 font weights become zero, and the PDF font italic flag becomes neutral style
 evidence. Link annotations are closed on every path after their URI action and
 rectangle have been inspected.
+
+The CLI uses validated default extraction limits: 256 MiB source size, 2,000
+pages, 1,000,000 returned character runs, 100,000 annotations, and a 200,000
+point maximum page dimension. Source size is checked before acquiring PDFium;
+page count and dimensions are checked before page text work; cumulative
+character and annotation counts are checked before mapping backend responses
+into shared models. Exceeding a limit returns the engine-neutral
+`extract.ErrLimitExceeded` category with the observed and maximum values.
 
 Wazero is configured to terminate active WebAssembly execution when its
 worker context is cancelled. Acquiring an instance uses the conversion

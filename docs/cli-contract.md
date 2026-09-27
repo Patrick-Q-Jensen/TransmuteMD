@@ -120,7 +120,7 @@ Temporary files must be removed after both successful and failed operations.
 | `0` | Success | Conversion completed, help shown, or version shown |
 | `2` | Usage | Invalid option, missing input, multiple inputs, invalid option combination |
 | `3` | Input | Missing/unreadable input, directory input, unrecognized format |
-| `4` | Conversion | Malformed or encrypted PDF, no extractable text, extraction/analysis/rendering failure |
+| `4` | Conversion | Malformed or encrypted PDF, configured extraction limit exceeded, no extractable text, extraction/analysis/rendering failure |
 | `5` | Output | Missing/unwritable destination directory, existing output without `--force`, write/replace failure |
 | `130` | Interrupted | Conversion cancelled by Ctrl+C or the equivalent interrupt signal |
 
@@ -158,7 +158,7 @@ The initial CLI test suite must cover:
 - missing output directory;
 - input and output resolving to the same file;
 - valid PDF content with a non-`.pdf` extension;
-- unreadable, non-PDF, malformed, encrypted, and textless input;
+- unreadable, non-PDF, malformed, encrypted, over-limit, and textless input;
 - no partial file or standard output after conversion failure;
 - interruption cleanup and exit code;
 - separation of Markdown on stdout from diagnostics on stderr.

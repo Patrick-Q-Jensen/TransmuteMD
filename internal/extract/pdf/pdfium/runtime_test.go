@@ -131,12 +131,14 @@ func (i *instanceStub) GetPageTextStructured(
 func (i *instanceStub) FPDFPage_GetAnnotCount(
 	*requests.FPDFPage_GetAnnotCount,
 ) (*responses.FPDFPage_GetAnnotCount, error) {
+	i.log.add("get annotation count")
 	return &responses.FPDFPage_GetAnnotCount{Count: i.annotationCount}, nil
 }
 
 func (i *instanceStub) FPDFPage_GetAnnot(
 	*requests.FPDFPage_GetAnnot,
 ) (*responses.FPDFPage_GetAnnot, error) {
+	i.log.add("get annotation")
 	return &responses.FPDFPage_GetAnnot{Annotation: i.annotation}, nil
 }
 

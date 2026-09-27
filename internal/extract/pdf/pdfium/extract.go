@@ -41,6 +41,7 @@ var (
 // Extractor extracts physical text layout through PDFium WebAssembly.
 type Extractor struct {
 	runtime *Runtime
+	limits  extract.Limits
 }
 
 var _ extract.Extractor = (*Extractor)(nil)
@@ -49,10 +50,21 @@ var _ extract.Extractor = (*Extractor)(nil)
 // The caller retains ownership of runtime and must close it after all
 // extraction has finished.
 func NewExtractor(runtime *Runtime) (*Extractor, error) {
+	return NewExtractorWithLimits(runtime, extract.DefaultLimits())
+}
+
+// NewExtractorWithLimits creates an extractor with explicit safety limits.
+func NewExtractorWithLimits(
+	runtime *Runtime,
+	limits extract.Limits,
+) (*Extractor, error) {
 	if runtime == nil {
 		return nil, errNilRuntime
 	}
-	return &Extractor{runtime: runtime}, nil
+	if err := limits.Validate(); err != nil {
+		return nil, fmt.Errorf("validate PDF extraction limits: %w", err)
+	}
+	return &Extractor{runtime: runtime, limits: limits}, nil
 }
 
 // Name returns the stable engine identifier.
@@ -69,13 +81,20 @@ func (e *Extractor) Extract(
 	if e == nil || e.runtime == nil {
 		return nil, errNilRuntime
 	}
+	if source != nil && source.Size() > e.limits.MaxSourceBytes {
+		return nil, extract.LimitError(
+			"source bytes",
+			source.Size(),
+			e.limits.MaxSourceBytes,
+		)
+	}
 
 	layout := &document.Layout{}
 	err := e.runtime.withDocument(
 		ctx,
 		source,
 		func(worker instance, pdf references.FPDF_DOCUMENT) error {
-			return extractLayout(ctx, worker, pdf, layout)
+			return extractLayout(ctx, worker, pdf, layout, e.limits)
 		},
 	)
 	if err != nil {
@@ -92,6 +111,7 @@ func extractLayout(
 	worker instance,
 	pdf references.FPDF_DOCUMENT,
 	layout *document.Layout,
+	limits extract.Limits,
 ) error {
 	pageCount, err := worker.FPDF_GetPageCount(&requests.FPDF_GetPageCount{
 		Document: pdf,
@@ -105,14 +125,28 @@ func extractLayout(
 	if pageCount.PageCount <= 0 {
 		return fmt.Errorf("%w: %w", extract.ErrInvalidDocument, errNoPages)
 	}
+	if pageCount.PageCount > limits.MaxPages {
+		return extract.LimitError(
+			"pages",
+			int64(pageCount.PageCount),
+			int64(limits.MaxPages),
+		)
+	}
 
 	layout.Pages = make([]document.Page, 0, pageCount.PageCount)
+	counts := extractionCounts{}
 	for index := range pageCount.PageCount {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 
-		page, diagnostics, err := extractPage(worker, pdf, index)
+		page, diagnostics, err := extractPage(
+			worker,
+			pdf,
+			index,
+			limits,
+			&counts,
+		)
 		if err != nil {
 			return fmt.Errorf("page %d: %w", index+1, err)
 		}
@@ -122,10 +156,17 @@ func extractLayout(
 	return nil
 }
 
+type extractionCounts struct {
+	textRuns    int
+	annotations int
+}
+
 func extractPage(
 	worker instance,
 	pdf references.FPDF_DOCUMENT,
 	index int,
+	limits extract.Limits,
+	counts *extractionCounts,
 ) (document.Page, []document.Diagnostic, error) {
 	size, err := worker.FPDF_GetPageSizeByIndex(&requests.FPDF_GetPageSizeByIndex{
 		Document: pdf,
@@ -143,6 +184,14 @@ func extractPage(
 			errMismatchedPage,
 			size.Page,
 			index,
+		)
+	}
+	if size.Width > float64(limits.MaxPageDimension) ||
+		size.Height > float64(limits.MaxPageDimension) {
+		return document.Page{}, nil, extract.LimitError(
+			"page dimension points",
+			int64(math.Ceil(math.Max(size.Width, size.Height))),
+			int64(limits.MaxPageDimension),
 		)
 	}
 
@@ -170,6 +219,14 @@ func extractPage(
 			index,
 		)
 	}
+	if len(text.Chars) > limits.MaxTextRuns-counts.textRuns {
+		return document.Page{}, nil, extract.LimitError(
+			"text runs",
+			int64(counts.textRuns+len(text.Chars)),
+			int64(limits.MaxTextRuns),
+		)
+	}
+	counts.textRuns += len(text.Chars)
 
 	runs := make([]document.TextRun, 0, len(text.Chars))
 	for charIndex, char := range text.Chars {
@@ -182,7 +239,14 @@ func extractPage(
 		}
 	}
 
-	links, diagnostics, err := extractPageLinks(worker, pdf, index, size.Height)
+	links, diagnostics, err := extractPageLinks(
+		worker,
+		pdf,
+		index,
+		size.Height,
+		limits,
+		counts,
+	)
 	if err != nil {
 		return document.Page{}, nil, fmt.Errorf("extract links: %w", err)
 	}
@@ -201,6 +265,8 @@ func extractPageLinks(
 	pdf references.FPDF_DOCUMENT,
 	index int,
 	pageHeight float64,
+	limits extract.Limits,
+	counts *extractionCounts,
 ) ([]document.LinkAnnotation, []document.Diagnostic, error) {
 	page := requests.Page{ByIndex: &requests.PageByIndex{
 		Document: pdf,
@@ -215,6 +281,14 @@ func extractPageLinks(
 	if count == nil {
 		return nil, nil, errNilAnnotCount
 	}
+	if count.Count > limits.MaxAnnotations-counts.annotations {
+		return nil, nil, extract.LimitError(
+			"annotations",
+			int64(counts.annotations+count.Count),
+			int64(limits.MaxAnnotations),
+		)
+	}
+	counts.annotations += count.Count
 
 	links := make([]document.LinkAnnotation, 0)
 	diagnostics := make([]document.Diagnostic, 0)

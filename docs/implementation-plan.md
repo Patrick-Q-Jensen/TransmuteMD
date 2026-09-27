@@ -179,7 +179,7 @@ Markdown text using the embedded PDFium WebAssembly backend.
 adapter can be replaced without redesigning the pipeline.
 
 - [x] Add extraction contract tests independent of concrete engines.
-- [ ] Add limits for file size, page count, memory-sensitive operations, and
+- [x] Add limits for file size, page count, memory-sensitive operations, and
       pathological content where the backend permits.
 - [ ] Verify cancellation and cleanup on success and failure paths.
 - [ ] Test malformed, encrypted, rotated, font-subset, and image-only PDFs.
@@ -265,3 +265,4 @@ A task is complete when:
 | 2026-09-27 | Added a self-authored three-page Phase 2 PDF fixture covering semantic structure, links, repeated furniture, columns, and conservative fallbacks. |
 | 2026-09-27 | Added exact Markdown and diagnostic golden coverage for the Phase 2 fixture through the embedded PDFium pipeline. |
 | 2026-09-27 | Added a backend-independent extractor contract suite and registered the PDFium WASM adapter against it. |
+| 2026-09-27 | Added validated extraction limits for source size, pages, page geometry, character runs, and annotations. |
