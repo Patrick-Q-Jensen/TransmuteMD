@@ -194,14 +194,16 @@ visible PDF path objects without exposing PDFium types. Table analysis uses
 this evidence only when repeated horizontal boundaries and continuous
 vertical boundaries establish at least two rows and two columns. Near-
 coincident edges from narrow filled rectangles are normalized before text
-runs are assigned by geometry. Every header cell and every column must contain
-text, and text must not cross an internal boundary. Runs within each accepted
-cell are independently ordered into lines before wrapped text is joined, so
-content cannot flow across neighboring columns. Composite ruled regions are
+runs are assigned by geometry. Every header cell must contain text, but a
+complete stable grid may preserve intentionally empty body rows and cells.
+Text must not cross an internal boundary. Runs within each accepted cell are
+independently ordered into lines before wrapped text is joined, so content
+cannot flow across neighboring columns. Composite ruled regions are
 partitioned into maximal adjacent row bands with the same vertical-boundary
 signature. A table carved from a mixed-signature region additionally requires
-a bold header distinct from its body; full-width heading or separator rows
-remain outside the table. Cells are then traversed in row-major order.
+a bold header distinct from its body, or a bold populated header when all
+body rows are empty; full-width heading or separator rows remain outside the
+table. Cells are then traversed in row-major order.
 When internal vertical rules are absent, horizontal rules may define rows and
 repeated word-start coordinates may define columns under ADR-0008. Inferred
 starts must occur in the header and at least 75 percent of body rows, with a
@@ -221,7 +223,9 @@ constraints are recorded in
 [ADR-0005](decisions/0005-preserve-ambiguous-tables-and-code-as-text.md);
 ruled-table acceptance is governed by
 [ADR-0007](decisions/0007-reconstruct-reliable-ruled-tables.md) and
-[ADR-0008](decisions/0008-infer-columns-in-horizontally-ruled-tables.md).
+[ADR-0008](decisions/0008-infer-columns-in-horizontally-ruled-tables.md), with
+sparse-table extensions governed by
+[ADR-0009](decisions/0009-recover-sparse-ruled-tables.md).
 The initial analyzer reports table-like text only after three adjacent lines
 show multiple large intra-line gaps. It reports code-like text only after two
 aligned adjacent lines consistently use recognized monospaced font names.

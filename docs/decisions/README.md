@@ -15,7 +15,8 @@ were made. They complement the current-state description in
 | [0005](0005-preserve-ambiguous-tables-and-code-as-text.md) | Preserve ambiguous tables and code as text | Superseded in part by ADR-0007 |
 | [0006](0006-emit-explicit-heading-anchors.md) | Emit explicit heading anchors for resolved internal links | Accepted |
 | [0007](0007-reconstruct-reliable-ruled-tables.md) | Reconstruct reliable ruled tables | Superseded in part by ADR-0008 |
-| [0008](0008-infer-columns-in-horizontally-ruled-tables.md) | Infer columns in horizontally ruled tables | Accepted |
+| [0008](0008-infer-columns-in-horizontally-ruled-tables.md) | Infer columns in horizontally ruled tables | Superseded in part by ADR-0009 |
+| [0009](0009-recover-sparse-ruled-tables.md) | Recover sparse ruled tables from local structural evidence | Accepted |
 
 ## Process
 

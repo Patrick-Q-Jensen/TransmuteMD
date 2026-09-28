@@ -46,6 +46,71 @@ func TestDetectTablesAssignsRectangularCells(t *testing.T) {
 	}
 }
 
+func TestDetectTablesAcceptsEmptyBodyRowsInCompleteGrid(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 110, 10),
+		horizontalRuling(10, 110, 30),
+		horizontalRuling(10, 110, 50),
+		verticalRuling(60, 10, 50),
+	}
+	runs := []orderedRun{
+		styledTableRun("Name", 15, 15, 35, 25, 700),
+		styledTableRun("Result", 65, 15, 95, 25, 700),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  100,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
+	}
+	if got := len(result.tables[0].rows); got != 2 {
+		t.Fatalf("row count = %d, want 2", got)
+	}
+	if tableCellHasText(result.tables[0].rows[1][0]) ||
+		tableCellHasText(result.tables[0].rows[1][1]) {
+		t.Fatal("empty body row unexpectedly contains text")
+	}
+}
+
+func TestDetectTablesAcceptsEmptySegmentWithBoldHeader(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 110, 10),
+		horizontalRuling(10, 110, 30),
+		horizontalRuling(10, 110, 50),
+		horizontalRuling(10, 110, 70),
+		verticalRuling(60, 30, 70),
+	}
+	runs := []orderedRun{
+		styledTableRun("Section", 15, 15, 50, 25, 700),
+		styledTableRun("Name", 15, 35, 35, 45, 700),
+		styledTableRun("Result", 65, 35, 95, 45, 700),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  100,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
+	}
+	table := result.tables[0]
+	if table.bounds.Top != 30 || table.bounds.Bottom != 70 {
+		t.Fatalf("table bounds = %+v, want top 30 and bottom 70", table.bounds)
+	}
+}
+
 func TestDetectTablesSegmentsStableGridAfterFullWidthRow(t *testing.T) {
 	t.Parallel()
 

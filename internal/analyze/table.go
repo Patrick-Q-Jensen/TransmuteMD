@@ -686,7 +686,6 @@ func sameCoordinates(left, right []float64) bool {
 func assignTableRuns(table *detectedTable, runs []orderedRun) bool {
 	columnHasText := make([]bool, len(table.columns)-1)
 	headerHasText := make([]bool, len(table.columns)-1)
-	hasBodyText := false
 	for _, run := range runs {
 		centerX := (run.run.Bounds.Left + run.run.Bounds.Right) / 2
 		centerY := verticalCenter(run.run.Bounds)
@@ -708,13 +707,10 @@ func assignTableRuns(table *detectedTable, runs []orderedRun) bool {
 			columnHasText[column] = true
 			if row == 0 {
 				headerHasText[column] = true
-			} else {
-				hasBodyText = true
 			}
 		}
 	}
-	return hasBodyText &&
-		!slices.Contains(columnHasText, false) &&
+	return !slices.Contains(columnHasText, false) &&
 		!slices.Contains(headerHasText, false)
 }
 
@@ -735,12 +731,15 @@ func hasDistinctTableHeader(table detectedTable) bool {
 			}
 		}
 	}
-	if len(headerWeights) == 0 || len(bodyWeights) == 0 {
+	if len(headerWeights) == 0 {
 		return false
 	}
 	slices.Sort(headerWeights)
-	slices.Sort(bodyWeights)
 	headerWeight := headerWeights[(len(headerWeights)-1)/2]
+	if len(bodyWeights) == 0 {
+		return headerWeight >= 600
+	}
+	slices.Sort(bodyWeights)
 	bodyWeight := bodyWeights[(len(bodyWeights)-1)/2]
 	return headerWeight >= 600 && headerWeight >= bodyWeight+100
 }
