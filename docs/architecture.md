@@ -197,12 +197,16 @@ coincident edges from narrow filled rectangles are normalized before text
 runs are assigned by geometry. Every header cell and every column must contain
 text, and text must not cross an internal boundary. Runs within each accepted
 cell are independently ordered into lines before wrapped text is joined, so
-content cannot flow across neighboring columns. Cells are then traversed in
-row-major order. Accepted table lines are removed from paragraph grouping
-without changing the surrounding page order. Rejected ruled regions and
-separate runs of strongly aligned table-like text remain ordinary text and
-produce one diagnostic per non-overlapping region. The renderer does not
-fabricate Markdown delimiters or emit raw HTML.
+content cannot flow across neighboring columns. Composite ruled regions are
+partitioned into maximal adjacent row bands with the same vertical-boundary
+signature. A table carved from a mixed-signature region additionally requires
+a bold header distinct from its body; full-width heading or separator rows
+remain outside the table. Cells are then traversed in row-major order.
+Accepted table lines are removed from paragraph grouping without changing the
+surrounding page order. Rejected ruled regions and separate runs of strongly
+aligned table-like text remain ordinary text and produce one diagnostic per
+non-overlapping region. The renderer does not fabricate Markdown delimiters
+or emit raw HTML.
 
 A future semantic code block requires multiple adjacent lines with consistent
 monospaced-font, alignment, spacing, and indentation evidence. Its language is

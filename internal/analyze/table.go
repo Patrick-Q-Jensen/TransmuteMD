@@ -22,9 +22,10 @@ type tableSegment struct {
 }
 
 type detectedTable struct {
-	bounds  document.Rectangle
-	columns []float64
-	rows    [][]detectedTableCell
+	bounds             document.Rectangle
+	columns            []float64
+	rows               [][]detectedTableCell
+	requireHeaderStyle bool
 }
 
 type detectedTableCell struct {
@@ -48,6 +49,17 @@ type horizontalSegmentGroup struct {
 	lines []tableSegment
 }
 
+type tableRowBand struct {
+	top     float64
+	bottom  float64
+	columns []float64
+}
+
+type tableBandGroup struct {
+	bands   []tableRowBand
+	columns []float64
+}
+
 func detectTables(
 	ctx context.Context,
 	page document.Page,
@@ -64,8 +76,32 @@ func detectTables(
 		if !candidate || isPageFurnitureTable(bounds, page.Height) {
 			continue
 		}
-		table, ok := tableFromHorizontalGroup(group, vertical)
-		if !ok {
+		bandGroups := tableBandGroups(group, vertical)
+		for _, bandGroup := range bandGroups {
+			bandBounds := tableBandGroupBounds(group, bandGroup)
+			table, ok := tableFromBandGroup(
+				group,
+				bandGroup,
+				len(bandGroups) > 1,
+			)
+			if !ok {
+				tableLike, err := hasTableCandidateText(ctx, bandBounds, runs)
+				if err != nil {
+					return tableDetection{}, err
+				}
+				if tableLike {
+					result.rejected = append(result.rejected, bandBounds)
+				}
+				continue
+			}
+			if !assignTableRuns(&table, runs) ||
+				table.requireHeaderStyle && !hasDistinctTableHeader(table) {
+				result.rejected = append(result.rejected, table.bounds)
+				continue
+			}
+			result.tables = append(result.tables, table)
+		}
+		if len(bandGroups) == 0 {
 			tableLike, err := hasTableCandidateText(ctx, bounds, runs)
 			if err != nil {
 				return tableDetection{}, err
@@ -73,13 +109,7 @@ func detectTables(
 			if tableLike {
 				result.rejected = append(result.rejected, bounds)
 			}
-			continue
 		}
-		if !assignTableRuns(&table, runs) {
-			result.rejected = append(result.rejected, bounds)
-			continue
-		}
-		result.tables = append(result.tables, table)
 	}
 	slices.SortStableFunc(result.tables, func(left, right detectedTable) int {
 		if order := compareFloat(left.bounds.Top, right.bounds.Top); order != 0 {
@@ -261,23 +291,23 @@ func groupHorizontalSegments(
 	return groups
 }
 
-func tableFromHorizontalGroup(
+func tableBandGroups(
 	group horizontalSegmentGroup,
 	vertical []tableSegment,
-) (detectedTable, bool) {
+) []tableBandGroup {
 	if len(group.lines) < 3 {
-		return detectedTable{}, false
+		return nil
 	}
 	slices.SortStableFunc(group.lines, func(left, right tableSegment) int {
 		return compareFloat(left.position, right.position)
 	})
 
-	var columns []float64
+	var bands []tableRowBand
 	for index := 1; index < len(group.lines); index++ {
 		top := group.lines[index-1].position
 		bottom := group.lines[index].position
 		if bottom-top < minimumTableCellHeight {
-			return detectedTable{}, false
+			continue
 		}
 		rowColumns := []float64{group.left}
 		for _, segment := range vertical {
@@ -291,39 +321,77 @@ func tableFromHorizontalGroup(
 		}
 		rowColumns = append(rowColumns, group.right)
 		rowColumns = mergeCoordinates(rowColumns)
-		if len(rowColumns) < 3 || !validColumnWidths(rowColumns) {
-			return detectedTable{}, false
-		}
-		if columns == nil {
-			columns = rowColumns
+		if !validColumnWidths(rowColumns) {
 			continue
 		}
-		if !sameCoordinates(columns, rowColumns) {
-			return detectedTable{}, false
-		}
+		bands = append(bands, tableRowBand{
+			top:     top,
+			bottom:  bottom,
+			columns: rowColumns,
+		})
 	}
 
-	rows := make([][]detectedTableCell, len(group.lines)-1)
+	var groups []tableBandGroup
+	for _, band := range bands {
+		if len(groups) == 0 {
+			groups = append(groups, tableBandGroup{
+				bands:   []tableRowBand{band},
+				columns: band.columns,
+			})
+			continue
+		}
+		current := &groups[len(groups)-1]
+		previous := current.bands[len(current.bands)-1]
+		if !sameCoordinates(current.columns, band.columns) ||
+			math.Abs(previous.bottom-band.top) > tableCoordinateTolerance {
+			groups = append(groups, tableBandGroup{
+				bands:   []tableRowBand{band},
+				columns: band.columns,
+			})
+			continue
+		}
+		current.bands = append(current.bands, band)
+	}
+	return groups
+}
+
+func tableBandGroupBounds(
+	group horizontalSegmentGroup,
+	bandGroup tableBandGroup,
+) document.Rectangle {
+	return document.Rectangle{
+		Left:   group.left,
+		Top:    bandGroup.bands[0].top,
+		Right:  group.right,
+		Bottom: bandGroup.bands[len(bandGroup.bands)-1].bottom,
+	}
+}
+
+func tableFromBandGroup(
+	group horizontalSegmentGroup,
+	bandGroup tableBandGroup,
+	segmented bool,
+) (detectedTable, bool) {
+	if len(bandGroup.bands) < 2 || len(bandGroup.columns) < 3 {
+		return detectedTable{}, false
+	}
+	rows := make([][]detectedTableCell, len(bandGroup.bands))
 	for rowIndex := range rows {
-		rows[rowIndex] = make([]detectedTableCell, len(columns)-1)
+		rows[rowIndex] = make([]detectedTableCell, len(bandGroup.columns)-1)
 		for columnIndex := range rows[rowIndex] {
 			rows[rowIndex][columnIndex].bounds = document.Rectangle{
-				Left:   columns[columnIndex],
-				Top:    group.lines[rowIndex].position,
-				Right:  columns[columnIndex+1],
-				Bottom: group.lines[rowIndex+1].position,
+				Left:   bandGroup.columns[columnIndex],
+				Top:    bandGroup.bands[rowIndex].top,
+				Right:  bandGroup.columns[columnIndex+1],
+				Bottom: bandGroup.bands[rowIndex].bottom,
 			}
 		}
 	}
 	return detectedTable{
-		bounds: document.Rectangle{
-			Left:   group.left,
-			Top:    group.lines[0].position,
-			Right:  group.right,
-			Bottom: group.lines[len(group.lines)-1].position,
-		},
-		columns: columns,
-		rows:    rows,
+		bounds:             tableBandGroupBounds(group, bandGroup),
+		columns:            bandGroup.columns,
+		rows:               rows,
+		requireHeaderStyle: segmented,
 	}, true
 }
 
@@ -395,6 +463,33 @@ func assignTableRuns(table *detectedTable, runs []orderedRun) bool {
 	return hasBodyText &&
 		!slices.Contains(columnHasText, false) &&
 		!slices.Contains(headerHasText, false)
+}
+
+func hasDistinctTableHeader(table detectedTable) bool {
+	var headerWeights []int
+	var bodyWeights []int
+	for rowIndex, row := range table.rows {
+		for _, cell := range row {
+			for _, run := range cell.runs {
+				if strings.TrimSpace(run.text) == "" {
+					continue
+				}
+				if rowIndex == 0 {
+					headerWeights = append(headerWeights, run.run.Style.FontWeight)
+				} else {
+					bodyWeights = append(bodyWeights, run.run.Style.FontWeight)
+				}
+			}
+		}
+	}
+	if len(headerWeights) == 0 || len(bodyWeights) == 0 {
+		return false
+	}
+	slices.Sort(headerWeights)
+	slices.Sort(bodyWeights)
+	headerWeight := headerWeights[(len(headerWeights)-1)/2]
+	bodyWeight := bodyWeights[(len(bodyWeights)-1)/2]
+	return headerWeight >= 600 && headerWeight >= bodyWeight+100
 }
 
 func tableRowCoordinates(table *detectedTable) []float64 {

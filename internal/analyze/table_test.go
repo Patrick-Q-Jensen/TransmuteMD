@@ -46,6 +46,43 @@ func TestDetectTablesAssignsRectangularCells(t *testing.T) {
 	}
 }
 
+func TestDetectTablesSegmentsStableGridAfterFullWidthRow(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 110, 10),
+		horizontalRuling(10, 110, 30),
+		horizontalRuling(10, 110, 50),
+		horizontalRuling(10, 110, 70),
+		verticalRuling(60, 30, 70),
+	}
+	runs := []orderedRun{
+		styledTableRun("Section", 15, 15, 50, 25, 700),
+		styledTableRun("Name", 15, 35, 35, 45, 700),
+		styledTableRun("Result", 65, 35, 95, 45, 700),
+		styledTableRun("Case A", 15, 55, 40, 65, 400),
+		styledTableRun("Passed", 65, 55, 95, 65, 400),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  100,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
+	}
+	table := result.tables[0]
+	if table.bounds.Top != 30 || table.bounds.Bottom != 70 {
+		t.Fatalf("table bounds = %+v, want top 30 and bottom 70", table.bounds)
+	}
+	if len(result.rejected) != 0 {
+		t.Fatalf("rejected regions = %#v, want none", result.rejected)
+	}
+}
+
 func TestOrderedTableContentOrdersWrappedCellsByRowAndColumn(t *testing.T) {
 	t.Parallel()
 
@@ -203,6 +240,17 @@ func verticalRuling(x, top, bottom float64) document.Ruling {
 }
 
 func tableRun(text string, left, top, right, bottom float64) orderedRun {
+	return styledTableRun(text, left, top, right, bottom, 0)
+}
+
+func styledTableRun(
+	text string,
+	left,
+	top,
+	right,
+	bottom float64,
+	weight int,
+) orderedRun {
 	return orderedRun{
 		run: document.TextRun{
 			Text: text,
@@ -212,6 +260,7 @@ func tableRun(text string, left, top, right, bottom float64) orderedRun {
 				Right:  right,
 				Bottom: bottom,
 			},
+			Style: document.TextStyle{FontWeight: weight},
 		},
 		text: text,
 	}

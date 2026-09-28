@@ -238,6 +238,10 @@ semantic models established by earlier work.
       Markdown.
 - [x] Preserve complex or ambiguous tables with a controlled plain-text
       fallback and one diagnostic per table region.
+- [x] Partition composite ruled regions into independently validated,
+      schema-consistent table bands around full-width separators.
+- [ ] Reconstruct horizontally ruled tables only when repeated text anchors
+      provide unambiguous column evidence.
 
 ### Group 5: Forms and document fields
 
@@ -351,3 +355,4 @@ A task is complete when:
 | 2026-09-28 | Ordered and joined wrapped text independently within each detected cell before row-major traversal. |
 | 2026-09-28 | Added validated semantic table blocks and rendered accepted grids as escaped Markdown pipe tables. |
 | 2026-09-28 | Preserved rejected and strongly aligned table regions as text with one non-overlapping diagnostic per region. |
+| 2026-09-28 | Partitioned mixed ruled regions by stable column signatures and recovered independently headed table bands. |
