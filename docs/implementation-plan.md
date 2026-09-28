@@ -270,7 +270,7 @@ but does not preserve their source row and column relationships accurately.
 - [x] Define when merged or spanning source cells can be flattened into a
       rectangular Markdown table without inventing relationships; otherwise
       retain the controlled plain-text fallback.
-- [ ] Add focused engine-neutral tests for the generalized geometry patterns
+- [x] Add focused engine-neutral tests for the generalized geometry patterns
       and verify sections 11 and 12 against the private sample without
       committing that document.
 
@@ -394,3 +394,4 @@ A task is complete when:
 | 2026-09-28 | Partitioned horizontal-only ruled regions around local header bands and recovered strongly anchored one-body-row tables. |
 | 2026-09-28 | Recovered short horizontal tables with sparse internal cells while retaining stricter support and truncation requirements for longer candidates. |
 | 2026-09-28 | Reopened table fidelity for sections 11 and 12 after real-sample validation showed incorrect relationships in short adjacent tables and a multi-level revision table. |
+| 2026-09-28 | Preserved adjacent short schemas and split synchronized logical records within tall horizontal bands while retaining fallback for ambiguous spans. |
