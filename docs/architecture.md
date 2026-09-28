@@ -146,15 +146,18 @@ Contents entries are recognized after a contents heading when section
 numbering and indentation agree with dotted-leader text ending in a positive
 page number. A more deeply indented adjacent line can complete a wrapped
 entry. All signals are required so numbered body text and ordinary periods
-are not reclassified as navigation.
+are not reclassified as navigation. Recognized entries become nested,
+engine-neutral unordered lists whose item text retains the section number and
+title while dropping dotted leaders and source page numbers.
 
 List inference recognizes common ASCII and Unicode unordered markers and
 decimal ordered markers followed by whitespace. Adjacent marker-aligned items
-of the same kind form a flat semantic list; ordered items must increment
-without gaps. Nearby lines indented beyond the marker become item
-continuations. Differently indented markers start separate lists rather than
-inferring unsupported nesting, and ambiguous unmarked lines remain
-paragraphs.
+of the same kind form a semantic list; ordered items must increment without
+gaps. Semantic list items can own nested child lists, which the Markdown
+renderer indents beneath their parent. Ordinary body-list inference remains
+flat: nearby lines indented beyond the marker become item continuations, and
+differently indented markers start separate lists rather than guessing at
+nesting. Ambiguous unmarked lines remain paragraphs.
 
 Two-column reading order is inferred only where a page region has a clear
 center gutter, at least two lines on each side, and vertically overlapping

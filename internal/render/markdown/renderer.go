@@ -79,14 +79,8 @@ func validateBlocks(ctx context.Context, doc *document.Document) error {
 		case *document.Heading:
 			text = typed.Text
 		case *document.List:
-			for itemIndex, item := range typed.Items {
-				if !utf8.ValidString(item.Text) {
-					return fmt.Errorf(
-						"render Markdown block %d list item %d: text is not valid UTF-8",
-						index+1,
-						itemIndex+1,
-					)
-				}
+			if err := validateListText(typed); err != nil {
+				return fmt.Errorf("render Markdown block %d: %w", index+1, err)
 			}
 			continue
 		default:
@@ -98,6 +92,28 @@ func validateBlocks(ctx context.Context, doc *document.Document) error {
 		}
 		if !utf8.ValidString(text) {
 			return fmt.Errorf("render Markdown block %d: text is not valid UTF-8", index+1)
+		}
+	}
+	return nil
+}
+
+func validateListText(list *document.List) error {
+	for itemIndex, item := range list.Items {
+		if !utf8.ValidString(item.Text) {
+			return fmt.Errorf(
+				"list item %d: text is not valid UTF-8",
+				itemIndex+1,
+			)
+		}
+		for childIndex := range item.Children {
+			if err := validateListText(&item.Children[childIndex]); err != nil {
+				return fmt.Errorf(
+					"list item %d child list %d: %w",
+					itemIndex+1,
+					childIndex+1,
+					err,
+				)
+			}
 		}
 	}
 	return nil
@@ -121,6 +137,14 @@ func renderBlock(ctx context.Context, block document.Block) (string, error) {
 }
 
 func renderList(ctx context.Context, list *document.List) (string, error) {
+	return renderListIndented(ctx, list, "")
+}
+
+func renderListIndented(
+	ctx context.Context,
+	list *document.List,
+	indent string,
+) (string, error) {
 	var result strings.Builder
 	for index, item := range list.Items {
 		if err := ctx.Err(); err != nil {
@@ -130,6 +154,7 @@ func renderList(ctx context.Context, list *document.List) (string, error) {
 			result.WriteByte('\n')
 		}
 
+		result.WriteString(indent)
 		prefix := "- "
 		if list.Kind == document.ListKindOrdered {
 			prefix = fmt.Sprintf("%d. ", list.Start+index)
@@ -142,10 +167,28 @@ func renderList(ctx context.Context, list *document.List) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("render list item %d: %w", index+1, err)
 		}
-		continuationIndent := strings.Repeat(" ", len(prefix))
+		continuationIndent := indent + strings.Repeat(" ", len(prefix))
 		content = strings.ReplaceAll(content, "\n", "\n"+continuationIndent)
 		result.WriteString(prefix)
 		result.WriteString(content)
+		for childIndex := range item.Children {
+			childIndent := indent + strings.Repeat(" ", len(prefix))
+			child, err := renderListIndented(
+				ctx,
+				&item.Children[childIndex],
+				childIndent,
+			)
+			if err != nil {
+				return "", fmt.Errorf(
+					"render list item %d child list %d: %w",
+					index+1,
+					childIndex+1,
+					err,
+				)
+			}
+			result.WriteByte('\n')
+			result.WriteString(child)
+		}
 	}
 	return result.String(), nil
 }

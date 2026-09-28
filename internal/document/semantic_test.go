@@ -21,8 +21,21 @@ func TestDocumentValidate(t *testing.T) {
 				},
 			},
 			&document.List{
-				Kind:  document.ListKindUnordered,
-				Items: []document.ListItem{{Text: "First item"}, {Text: "Second item"}},
+				Kind: document.ListKindUnordered,
+				Items: []document.ListItem{
+					{
+						Text: "First item",
+						Children: []document.List{
+							{
+								Kind: document.ListKindUnordered,
+								Items: []document.ListItem{
+									{Text: "Nested item"},
+								},
+							},
+						},
+					},
+					{Text: "Second item"},
+				},
 			},
 			&document.List{
 				Kind:  document.ListKindOrdered,
@@ -120,6 +133,18 @@ func TestDocumentValidateRejectsInvalidList(t *testing.T) {
 		{name: "oversized ordered range", list: &document.List{Kind: document.ListKindOrdered, Start: 999_999_999, Items: []document.ListItem{{Text: "item"}, {Text: "item"}}}},
 		{name: "no items", list: &document.List{Kind: document.ListKindUnordered}},
 		{name: "empty item", list: &document.List{Kind: document.ListKindUnordered, Items: []document.ListItem{{}}}},
+		{
+			name: "invalid child",
+			list: &document.List{
+				Kind: document.ListKindUnordered,
+				Items: []document.ListItem{
+					{
+						Text:     "item",
+						Children: []document.List{{Kind: document.ListKindUnordered}},
+					},
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {

@@ -569,6 +569,62 @@ func TestBasicAnalyzerDoesNotPromoteDottedContentsEntry(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzerBuildsNestedContentsList(t *testing.T) {
+	t.Parallel()
+
+	title := textRun("Contents", 10, 10, 100, 30)
+	title.Style = document.TextStyle{FontSize: 24, FontWeight: 700}
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					title,
+					textRun("1. Introduction ........ 3", 10, 44, 190, 54),
+					textRun("1.1. Scope ........ 4", 24, 58, 190, 68),
+					textRun("1.2. Audience ........ 5", 24, 72, 190, 82),
+					textRun("2. Results ........ 6", 10, 86, 190, 96),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got, want := len(result.Blocks), 2; got != want {
+		t.Fatalf("block count = %d, want %d", got, want)
+	}
+	list, ok := result.Blocks[1].(*document.List)
+	if !ok {
+		t.Fatalf("block 2 has type %T, want *document.List", result.Blocks[1])
+	}
+	want := &document.List{
+		Kind: document.ListKindUnordered,
+		Items: []document.ListItem{
+			{
+				Text: "1. Introduction",
+				Children: []document.List{
+					{
+						Kind: document.ListKindUnordered,
+						Items: []document.ListItem{
+							{Text: "1.1. Scope"},
+							{Text: "1.2. Audience"},
+						},
+					},
+				},
+			},
+			{Text: "2. Results"},
+		},
+	}
+	if !reflect.DeepEqual(list, want) {
+		t.Fatalf("contents list = %#v, want %#v", list, want)
+	}
+}
+
 func TestBasicAnalyzerDoesNotPromoteOnlyLineToHeading(t *testing.T) {
 	t.Parallel()
 

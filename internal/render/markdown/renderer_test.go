@@ -67,7 +67,17 @@ func TestRendererWritesOrderedAndUnorderedLists(t *testing.T) {
 				Kind: document.ListKindUnordered,
 				Items: []document.ListItem{
 					{Text: "First *literal* item"},
-					{Text: "# Not a heading\ncontinued"},
+					{
+						Text: "# Not a heading\ncontinued",
+						Children: []document.List{
+							{
+								Kind: document.ListKindUnordered,
+								Items: []document.ListItem{
+									{Text: "Nested item"},
+								},
+							},
+						},
+					},
 				},
 			},
 			&document.List{
@@ -87,7 +97,8 @@ func TestRendererWritesOrderedAndUnorderedLists(t *testing.T) {
 	want := "Intro.\n\n" +
 		"- First \\*literal\\* item\n" +
 		"- \\# Not a heading\n" +
-		"  continued\n\n" +
+		"  continued\n" +
+		"  - Nested item\n\n" +
 		"3. Third item\n" +
 		"4. Fourth item\n"
 	if got := output.String(); got != want {
@@ -205,6 +216,29 @@ func TestRendererRejectsInvalidInputBeforeWriting(t *testing.T) {
 					&document.List{
 						Kind:  document.ListKindUnordered,
 						Items: []document.ListItem{{Text: string([]byte{0xff})}},
+					},
+				},
+			},
+		},
+		{
+			name: "invalid UTF-8 nested list item",
+			doc: &document.Document{
+				Blocks: []document.Block{
+					&document.List{
+						Kind: document.ListKindUnordered,
+						Items: []document.ListItem{
+							{
+								Text: "parent",
+								Children: []document.List{
+									{
+										Kind: document.ListKindUnordered,
+										Items: []document.ListItem{
+											{Text: string([]byte{0xff})},
+										},
+									},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -329,15 +363,30 @@ func cloneDocument(doc document.Document) document.Document {
 			copied.Links = append([]document.TextLink(nil), typed.Links...)
 			clone.Blocks[index] = &copied
 		case *document.List:
-			copied := *typed
-			copied.Items = append([]document.ListItem(nil), typed.Items...)
-			for itemIndex := range copied.Items {
-				copied.Items[itemIndex].Links = append(
-					[]document.TextLink(nil),
-					typed.Items[itemIndex].Links...,
-				)
-			}
+			copied := cloneList(*typed)
 			clone.Blocks[index] = &copied
+		}
+	}
+	return clone
+}
+
+func cloneList(list document.List) document.List {
+	clone := list
+	clone.Items = append([]document.ListItem(nil), list.Items...)
+	for itemIndex := range clone.Items {
+		clone.Items[itemIndex].Links = append(
+			[]document.TextLink(nil),
+			list.Items[itemIndex].Links...,
+		)
+		if list.Items[itemIndex].Children == nil {
+			continue
+		}
+		clone.Items[itemIndex].Children = make(
+			[]document.List,
+			len(list.Items[itemIndex].Children),
+		)
+		for childIndex, child := range list.Items[itemIndex].Children {
+			clone.Items[itemIndex].Children[childIndex] = cloneList(child)
 		}
 	}
 	return clone

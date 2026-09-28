@@ -767,7 +767,8 @@ func normalizeFurnitureText(text string) string {
 func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error) {
 	blocks := make([]document.Block, 0, len(lines))
 	headingLevels := detectHeadingLevels(lines)
-	pageLeft, pageRight := textMargins(lines, headingLevels)
+	contentsEntries := detectContentsEntries(lines)
+	pageLeft, pageRight := textMargins(lines, headingLevels, contentsEntries)
 	var paragraph []textLine
 	var list *pendingList
 
@@ -798,6 +799,14 @@ func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error
 		if line.breakBefore {
 			flushParagraph()
 			flushList()
+		}
+		if contentsEntries[index] != nil {
+			flushParagraph()
+			flushList()
+			contents, next := buildContentsList(contentsEntries, index)
+			blocks = append(blocks, contents)
+			index = next - 1
+			continue
 		}
 		if headingLevels[index] != 0 {
 			flushParagraph()
@@ -850,6 +859,68 @@ func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error
 	flushList()
 
 	return blocks, nil
+}
+
+func buildContentsList(
+	entries []*detectedContentsEntry,
+	start int,
+) (*document.List, int) {
+	var flat []detectedContentsEntry
+	index := start
+	for index < len(entries) {
+		entry := entries[index]
+		if entry == nil {
+			break
+		}
+		flat = append(flat, *entry)
+		index += entry.lineCount
+	}
+	rootDepth := flat[0].depth
+	for _, entry := range flat[1:] {
+		rootDepth = min(rootDepth, entry.depth)
+	}
+	items, _ := buildContentsItems(flat, 0, rootDepth)
+	return &document.List{
+		Kind:  document.ListKindUnordered,
+		Items: items,
+	}, index
+}
+
+func buildContentsItems(
+	entries []detectedContentsEntry,
+	start,
+	depth int,
+) ([]document.ListItem, int) {
+	var items []document.ListItem
+	index := start
+	for index < len(entries) {
+		entry := entries[index]
+		if entry.depth < depth {
+			break
+		}
+		if entry.depth > depth {
+			if len(items) == 0 {
+				items = append(items, document.ListItem{
+					Text: entry.number + " " + entry.title,
+				})
+				index++
+				continue
+			}
+			children, next := buildContentsItems(entries, index, entry.depth)
+			last := len(items) - 1
+			items[last].Children = append(items[last].Children, document.List{
+				Kind:  document.ListKindUnordered,
+				Items: children,
+			})
+			index = next
+			continue
+		}
+		items = append(items, document.ListItem{
+			Text: entry.number + " " + entry.title,
+		})
+		index++
+	}
+	return items, index
 }
 
 func isNumberedHeadingContinuation(
@@ -1034,11 +1105,17 @@ func listItemContent(text string, markerEnd int) (string, bool) {
 	return content, content != ""
 }
 
-func textMargins(lines []textLine, headingLevels []int) (float64, float64) {
+func textMargins(
+	lines []textLine,
+	headingLevels []int,
+	contentsEntries []*detectedContentsEntry,
+) (float64, float64) {
 	left := math.Inf(1)
 	right := math.Inf(-1)
 	for index, line := range lines {
-		if line.text == "" || headingLevels[index] != 0 {
+		if line.text == "" ||
+			headingLevels[index] != 0 ||
+			contentsEntries[index] != nil {
 			continue
 		}
 		if _, ok := detectListItem(line.text); ok {

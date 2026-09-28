@@ -8,7 +8,10 @@ import (
 	"unicode/utf8"
 )
 
-const maximumOrderedListMarker = 999_999_999
+const (
+	maximumOrderedListMarker = 999_999_999
+	maximumListDepth         = 32
+)
 
 // Document contains semantic blocks in reading order.
 type Document struct {
@@ -102,6 +105,13 @@ func (l *List) validate() error {
 	if l == nil {
 		return errors.New("list must not be nil")
 	}
+	return l.validateDepth(1)
+}
+
+func (l *List) validateDepth(depth int) error {
+	if depth > maximumListDepth {
+		return fmt.Errorf("list nesting must not exceed %d levels", maximumListDepth)
+	}
 	switch l.Kind {
 	case ListKindUnordered:
 		if l.Start != 0 {
@@ -134,14 +144,25 @@ func (l *List) validate() error {
 		if err := validateTextLinks(item.Text, item.Links); err != nil {
 			return fmt.Errorf("list item %d: %w", index+1, err)
 		}
+		for childIndex := range item.Children {
+			if err := item.Children[childIndex].validateDepth(depth + 1); err != nil {
+				return fmt.Errorf(
+					"list item %d child list %d: %w",
+					index+1,
+					childIndex+1,
+					err,
+				)
+			}
+		}
 	}
 	return nil
 }
 
-// ListItem is plain text with optional external links.
+// ListItem is plain text with optional external links and nested lists.
 type ListItem struct {
-	Text  string
-	Links []TextLink
+	Text     string
+	Links    []TextLink
+	Children []List
 }
 
 // TextLink identifies linked text by UTF-8 byte offsets.
