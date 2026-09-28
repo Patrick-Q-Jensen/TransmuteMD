@@ -93,6 +93,46 @@ func TestBasicAnalyzerUsesVisibleWhitespaceAndIgnoresControlWhitespace(t *testin
 	}
 }
 
+func TestBasicAnalyzerPreservesConsistentlyTrackedWords(t *testing.T) {
+	t.Parallel()
+
+	glyph := func(text string, left, right float64) document.TextRun {
+		return document.TextRun{
+			Text:   text,
+			Bounds: document.Rectangle{Left: left, Top: 10, Right: right, Bottom: 16},
+			Style:  document.TextStyle{FontName: "Tracked Sans", FontSize: 6},
+		}
+	}
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  100,
+				Height: 100,
+				TextRuns: []document.TextRun{
+					glyph("B", 10, 13),
+					glyph("M", 14.3, 18),
+					glyph("I", 19.3, 20),
+					glyph("T", 24, 27),
+					glyph("E", 28.3, 31),
+					glyph("S", 32.3, 35),
+					glyph("T", 36.3, 39),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+
+	want := []string{"BMI TEST"}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paragraphs = %#v, want %#v", got, want)
+	}
+}
+
 func TestBasicAnalyzerPreservesIndentedParagraphBoundaries(t *testing.T) {
 	t.Parallel()
 
@@ -182,6 +222,97 @@ func TestBasicAnalyzerJoinsSoftHyphenatedWraps(t *testing.T) {
 	}
 
 	want := []string{"Document transmutation keeps words readable."}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paragraphs = %#v, want %#v", got, want)
+	}
+}
+
+func TestBasicAnalyzerJoinsPDFDiscretionaryBreakWraps(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("The imple\u0002", 10, 10, 190, 20),
+					textRun("mentation remains readable.", 10, 24, 190, 34),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+
+	want := []string{"The implementation remains readable."}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paragraphs = %#v, want %#v", got, want)
+	}
+}
+
+func TestBasicAnalyzerDoesNotJoinDiscretionaryBreakAcrossTableColumns(
+	t *testing.T,
+) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("Step", 10, 10, 30, 20),
+					textRun("destina\u0002", 100, 10, 150, 20),
+					textRun("and check", 10, 24, 60, 34),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+
+	want := []string{"Step destina- and check"}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paragraphs = %#v, want %#v", got, want)
+	}
+}
+
+func TestBasicAnalyzerDoesNotJoinDiscretionaryBreakInAmbiguousColumnGroup(
+	t *testing.T,
+) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("Install", 10, 10, 45, 20),
+					textRun("Expected result", 120, 10, 190, 20),
+					textRun("direc\u0002", 10, 24, 50, 34),
+					textRun("stallation continues.", 10, 38, 120, 48),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+
+	want := []string{"Install Expected result direc- stallation continues."}
 	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
 		t.Fatalf("paragraphs = %#v, want %#v", got, want)
 	}

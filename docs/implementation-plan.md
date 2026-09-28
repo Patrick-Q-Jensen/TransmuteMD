@@ -191,7 +191,68 @@ adapter can be replaced without redesigning the pipeline.
 - [x] Document unsupported PDF features and expected degradation.
 - [x] Benchmark representative documents for time and peak memory.
 
-## Phase 4: Public releases
+## Phase 4: Document fidelity
+
+**Outcome:** structured business documents preserve readable text, hierarchy,
+navigation, and tabular relationships before release engineering begins.
+
+Implement these groups in order because later groups depend on evidence and
+semantic models established by earlier work.
+
+### Group 1: Text fidelity
+
+- [x] Normalize PDF discretionary-break control characters, including U+0002,
+      and rejoin words split across lines.
+- [x] Improve word-space inference using font scale, observed glyph geometry,
+      and consistent character tracking so letterspaced text is not split
+      into false words.
+
+### Group 2: Heading and contents structure
+
+- [ ] Detect hierarchical numbered headings and derive consistent heading
+      levels while excluding decorative glyphs and document-control metadata.
+- [ ] Recognize contents entries using numbering, indentation, dotted leaders,
+      and trailing page numbers.
+- [ ] Add engine-neutral nested-list semantics and render hierarchical
+      contents without leader dots.
+
+### Group 3: Internal document navigation
+
+- [ ] Extend engine-neutral links to represent internal page and named
+      destinations.
+- [ ] Associate internal destinations with contents labels and emit stable
+      Markdown anchors where possible.
+- [ ] Aggregate repeated unsupported-link diagnostics by page and category.
+
+### Group 4: Table reconstruction
+
+- [ ] Supersede ADR-0005 with acceptance criteria for reliable table
+      reconstruction and conservative fallback.
+- [ ] Add engine-neutral ruling-line or equivalent geometry evidence where
+      the backend exposes it.
+- [ ] Detect table regions, rows, columns, and cells from geometry and aligned
+      text.
+- [ ] Order wrapped text within each cell before traversing cells by row and
+      column.
+- [ ] Add validated semantic table blocks and render compatible tables as
+      Markdown.
+- [ ] Preserve complex or ambiguous tables with a controlled plain-text
+      fallback and one diagnostic per table region.
+
+### Group 5: Forms and document fields
+
+- [ ] Define which checkboxes, signature fields, blank result cells, and ruled
+      fields carry useful document semantics.
+- [ ] Detect supported field geometry without treating decorative lines as
+      content.
+- [ ] Represent supported empty checkboxes and meaningful blank fields in
+      Markdown-compatible form.
+
+Image and general graphic extraction remains deferred to Phase 6. Decorative
+graphics should continue to be omitted unless a future semantic image model
+can distinguish meaningful figures and define asset and alt-text behavior.
+
+## Phase 5: Public releases
 
 **Outcome:** users can download a release artifact and run it without
 installing dependencies.
@@ -207,7 +268,7 @@ installing dependencies.
 - [ ] Automate tagged GitHub releases.
 - [ ] Add installation and upgrade instructions to the README.
 
-## Phase 5: Future formats and capabilities
+## Phase 6: Future formats and capabilities
 
 This phase is intentionally uncommitted. Candidates should be prioritized from
 user feedback and corpus results.
@@ -274,3 +335,7 @@ A task is complete when:
 | 2026-09-27 | Closed the conditional engine-selection item without adding a one-choice CLI option; selection remains internal until another backend is accepted. |
 | 2026-09-27 | Documented supported PDF content, unsupported features, conservative degradation, warnings, and extraction limits. |
 | 2026-09-27 | Added end-to-end benchmarks for representative generated PDFs with timing, allocation, and sampled peak Go-heap metrics. |
+| 2026-09-27 | Added an ordered document-fidelity phase covering text normalization, heading and contents structure, internal navigation, tables, and form fields before public release work. |
+| 2026-09-27 | Normalized PDFium U+0002 discretionary breaks and rejoined affected wrapped words. |
+| 2026-09-27 | Distinguished consistent positioned-glyph tracking from larger inferred word gaps. |
+| 2026-09-28 | Preserved discretionary hyphens across ambiguous column groups to prevent cross-column word corruption. |

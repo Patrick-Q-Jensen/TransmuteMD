@@ -115,15 +115,21 @@ models, allowing focused unit tests without loading a PDF.
 The initial analyzer uses page order and single-column geometry. It clusters
 text runs into lines using vertical overlap, sorts each line from left to
 right, preserves explicit whitespace, and infers missing word spaces from
-horizontal gaps. Nearby lines become one plain paragraph, while larger
-vertical gaps and page boundaries start a new paragraph. Zero-area
-whitespace-only control runs are ignored.
+horizontal gaps. Consistent small gaps between individually positioned glyphs
+are treated as character tracking rather than word boundaries, while explicit
+spaces and materially larger gaps still separate words. Nearby lines become
+one plain paragraph, while larger vertical gaps and page boundaries start a
+new paragraph. Zero-area whitespace-only control runs are ignored.
 
 Wrapped-line analysis also uses the observed page text margins. A new
 first-line indent or a short sentence-ending line starts a paragraph even
 when line spacing remains uniform. Otherwise adjacent lines remain in the
 same paragraph, and an ASCII or soft hyphen at a line end is removed when the
-next line begins with a lowercase letter. Rotation and multi-column behavior
+next line begins with a lowercase letter. PDFium's U+0002 discretionary-break
+marker is normalized to the same soft-hyphen behavior before line joining.
+When any line in the wrapped group has a large internal gap that suggests
+interleaved columns, visible hyphens are retained throughout that group rather
+than risking a cross-column word join. Rotation and multi-column behavior
 remain separate analysis work.
 
 Heading inference compares each line's largest observed font size and weight

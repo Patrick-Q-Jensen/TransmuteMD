@@ -29,6 +29,10 @@ const (
 	minimumColumnLines      = 2
 	pageFurnitureBandRatio  = 0.12
 	minimumFurniturePages   = 3
+	pdfDiscretionaryBreak   = '\u0002'
+	maximumTrackingGapRatio = 0.35
+	trackingGapMultiplier   = 1.5
+	minimumTrackingGaps     = 2
 )
 
 var errNilLayout = errors.New("layout must not be nil")
@@ -187,6 +191,11 @@ func normalizeRunText(run document.TextRun) string {
 	var result strings.Builder
 	previousWasSpace := false
 	for _, value := range run.Text {
+		if value == pdfDiscretionaryBreak {
+			result.WriteByte('-')
+			previousWasSpace = false
+			continue
+		}
 		if unicode.IsSpace(value) {
 			if !previousWasSpace {
 				result.WriteByte(' ')
@@ -426,6 +435,7 @@ func (line *textLine) finish(ctx context.Context) error {
 	var result strings.Builder
 	var previous *orderedRun
 	spacePending := false
+	trackingGapThreshold := line.trackingGapThreshold()
 	activeLink := ""
 	activeStart := 0
 	closeLink := func() {
@@ -455,7 +465,11 @@ func (line *textLine) finish(ctx context.Context) error {
 		addSpace := result.Len() > 0 &&
 			(spacePending ||
 				strings.HasPrefix(current.text, " ") ||
-				previous != nil && hasWordGap(previous.run, current.run))
+				previous != nil && hasWordGap(
+					previous.run,
+					current.run,
+					trackingGapThreshold,
+				))
 		if current.linkDestination != activeLink {
 			closeLink()
 		}
@@ -475,7 +489,50 @@ func (line *textLine) finish(ctx context.Context) error {
 	return nil
 }
 
-func hasWordGap(left, right document.TextRun) bool {
+func (line textLine) trackingGapThreshold() float64 {
+	gaps := make([]float64, 0, len(line.runs)-1)
+	for index := 1; index < len(line.runs); index++ {
+		left := line.runs[index-1]
+		right := line.runs[index]
+		if !isSingleWordRune(left.text) ||
+			!isSingleWordRune(right.text) ||
+			!sameTrackingStyle(left.run.Style, right.run.Style) {
+			continue
+		}
+
+		gap := right.run.Bounds.Left - left.run.Bounds.Right
+		scale := math.Max(
+			math.Max(left.run.Style.FontSize, left.run.Bounds.Height()),
+			math.Max(right.run.Style.FontSize, right.run.Bounds.Height()),
+		)
+		if gap > 0 && scale > 0 && gap <= scale*maximumTrackingGapRatio {
+			gaps = append(gaps, gap)
+		}
+	}
+	if len(gaps) < minimumTrackingGaps {
+		return 0
+	}
+	slices.Sort(gaps)
+	return gaps[(len(gaps)-1)/2] * trackingGapMultiplier
+}
+
+func isSingleWordRune(text string) bool {
+	value, size := utf8.DecodeRuneInString(text)
+	return size == len(text) && (unicode.IsLetter(value) || unicode.IsDigit(value))
+}
+
+func sameTrackingStyle(left, right document.TextStyle) bool {
+	return left.FontName == right.FontName &&
+		left.FontSize == right.FontSize &&
+		left.FontWeight == right.FontWeight &&
+		left.Italic == right.Italic
+}
+
+func hasWordGap(
+	left,
+	right document.TextRun,
+	trackingGapThreshold float64,
+) bool {
 	gap := right.Bounds.Left - left.Bounds.Right
 	if gap <= 0 {
 		return false
@@ -487,7 +544,7 @@ func hasWordGap(left, right document.TextRun) bool {
 	if scale == 0 {
 		return false
 	}
-	return gap > scale*wordGapRatio
+	return gap > math.Max(scale*wordGapRatio, trackingGapThreshold)
 }
 
 func compareLines(left, right textLine) int {
@@ -1084,9 +1141,13 @@ func joinWrappedLines(lines []textLine) string {
 func joinWrappedContent(lines []textLine) (string, []document.TextLink) {
 	var result strings.Builder
 	var links []document.TextLink
+	ambiguousColumns := hasAmbiguousColumns(lines)
 	for index, line := range lines {
 		text := line.text
-		if index+1 < len(lines) && endsWithSoftHyphen(text, lines[index+1].text) {
+		joinDiscretionaryBreak := index+1 < len(lines) &&
+			!ambiguousColumns &&
+			joinsDiscretionaryBreak(line, lines[index+1])
+		if joinDiscretionaryBreak {
 			text = strings.TrimSuffix(strings.TrimSuffix(text, "-"), "\u00ad")
 		}
 		offset := result.Len()
@@ -1103,11 +1164,23 @@ func joinWrappedContent(lines []textLine) (string, []document.TextLink) {
 			links = append(links, link)
 		}
 		result.WriteString(text)
-		if index+1 < len(lines) && !endsWithSoftHyphen(line.text, lines[index+1].text) {
+		if index+1 < len(lines) && !joinDiscretionaryBreak {
 			result.WriteByte(' ')
 		}
 	}
 	return result.String(), links
+}
+
+func hasAmbiguousColumns(lines []textLine) bool {
+	return slices.ContainsFunc(lines, func(line textLine) bool {
+		return lineLargeGapCount(line) > 0
+	})
+}
+
+func joinsDiscretionaryBreak(current, next textLine) bool {
+	return lineLargeGapCount(current) == 0 &&
+		lineLargeGapCount(next) == 0 &&
+		endsWithSoftHyphen(current.text, next.text)
 }
 
 func endsSentence(text string) bool {
