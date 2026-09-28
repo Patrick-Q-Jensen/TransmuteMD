@@ -2,6 +2,7 @@ package analyze
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/document"
@@ -39,6 +40,40 @@ func TestDetectTablesAssignsRectangularCells(t *testing.T) {
 	}
 	if got := table.rows[1][1].runs[0].text; got != "B" {
 		t.Fatalf("body cell text = %q, want B", got)
+	}
+}
+
+func TestOrderedTableContentOrdersWrappedCellsByRowAndColumn(t *testing.T) {
+	t.Parallel()
+
+	table := detectedTable{
+		rows: [][]detectedTableCell{
+			{
+				{runs: []orderedRun{tableRun("Description", 10, 10, 70, 20)}},
+				{runs: []orderedRun{tableRun("Result", 80, 10, 110, 20)}},
+			},
+			{
+				{
+					runs: []orderedRun{
+						tableRun("uration", 10, 35, 45, 45),
+						tableRun("Config-", 10, 22, 45, 32),
+					},
+				},
+				{runs: []orderedRun{tableRun("Passed", 80, 22, 110, 32)}},
+			},
+		},
+	}
+
+	got, err := orderedTableContent(context.Background(), table)
+	if err != nil {
+		t.Fatalf("orderedTableContent() returned an unexpected error: %v", err)
+	}
+	want := [][]tableCellContent{
+		{{text: "Description"}, {text: "Result"}},
+		{{text: "Configuration"}, {text: "Passed"}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("table content = %#v, want %#v", got, want)
 	}
 }
 

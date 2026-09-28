@@ -32,6 +32,11 @@ type detectedTableCell struct {
 	runs   []orderedRun
 }
 
+type tableCellContent struct {
+	text  string
+	links []document.TextLink
+}
+
 type horizontalSegmentGroup struct {
 	left  float64
 	right float64
@@ -351,4 +356,55 @@ func crossesInternalBoundaryY(
 		}
 	}
 	return false
+}
+
+func orderedTableContent(
+	ctx context.Context,
+	table detectedTable,
+) ([][]tableCellContent, error) {
+	rows := make([][]tableCellContent, len(table.rows))
+	for rowIndex, row := range table.rows {
+		rows[rowIndex] = make([]tableCellContent, len(row))
+		for columnIndex, cell := range row {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			lines, err := tableCellLines(ctx, cell.runs)
+			if err != nil {
+				return nil, err
+			}
+			text, links := joinWrappedContent(lines)
+			rows[rowIndex][columnIndex] = tableCellContent{
+				text:  text,
+				links: links,
+			}
+		}
+	}
+	return rows, nil
+}
+
+func tableCellLines(
+	ctx context.Context,
+	runs []orderedRun,
+) ([]textLine, error) {
+	runs = slices.Clone(runs)
+	slices.SortStableFunc(runs, compareRunsVertically)
+	var lines []textLine
+	for _, run := range runs {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if len(lines) == 0 || !belongsToLine(lines[len(lines)-1], run.run) {
+			lines = append(lines, newTextLine(run))
+			continue
+		}
+		lines[len(lines)-1].add(run)
+	}
+	for index := range lines {
+		if err := lines[index].finish(ctx); err != nil {
+			return nil, err
+		}
+	}
+	slices.SortStableFunc(lines, compareLines)
+	return lines, nil
 }

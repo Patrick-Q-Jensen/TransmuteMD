@@ -232,7 +232,7 @@ semantic models established by earlier work.
       the backend exposes it.
 - [x] Detect table regions, rows, columns, and cells from geometry and aligned
       text.
-- [ ] Order wrapped text within each cell before traversing cells by row and
+- [x] Order wrapped text within each cell before traversing cells by row and
       column.
 - [ ] Add validated semantic table blocks and render compatible tables as
       Markdown.
@@ -348,3 +348,4 @@ A task is complete when:
 | 2026-09-28 | Accepted ADR-0007 with strict ruled-table acceptance criteria and conservative regional fallback. |
 | 2026-09-28 | Added bounded engine-neutral ruling geometry extracted from visible axis-aligned PDF path edges. |
 | 2026-09-28 | Detected complete ruled-table lattices and assigned text unambiguously to physical cells. |
+| 2026-09-28 | Ordered and joined wrapped text independently within each detected cell before row-major traversal. |

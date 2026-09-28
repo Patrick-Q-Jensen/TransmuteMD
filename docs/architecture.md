@@ -195,9 +195,11 @@ this evidence only when repeated horizontal boundaries and continuous
 vertical boundaries establish at least two rows and two columns. Near-
 coincident edges from narrow filled rectangles are normalized before text
 runs are assigned by geometry. Every header cell and every column must contain
-text, and text must not cross an internal boundary. Ambiguous regions fall
-back to text. The renderer does not fabricate Markdown delimiters or emit raw
-HTML.
+text, and text must not cross an internal boundary. Runs within each accepted
+cell are independently ordered into lines before wrapped text is joined, so
+content cannot flow across neighboring columns. Cells are then traversed in
+row-major order. Ambiguous regions fall back to text. The renderer does not
+fabricate Markdown delimiters or emit raw HTML.
 
 A future semantic code block requires multiple adjacent lines with consistent
 monospaced-font, alignment, spacing, and indentation evidence. Its language is
