@@ -251,6 +251,29 @@ semantic models established by earlier work.
 - [x] Support sparse internal cells and multi-line content in locally inferred
       horizontal tables.
 
+### Group 4 follow-up: Short and multi-level horizontal tables
+
+This is the next fidelity investigation. Real-sample validation shows that the
+current local-schema inference emits Markdown tables for sections 11 and 12,
+but does not preserve their source row and column relationships accurately.
+
+- [x] Compare the source geometry, extracted text runs, ruling bands, and
+      generated Markdown for the section 11 reference tables and the section
+      12 revision table; record the exact rejected, merged, or misassigned
+      relationships before changing heuristics.
+- [ ] Preserve adjacent short horizontal tables as independent schemas,
+      including their header-to-body column boundaries and links, without
+      relying on known labels or section numbers.
+- [ ] Reconstruct multi-line or stacked table headers and multiple logical
+      records within a tall ruled band without collapsing them into one
+      Markdown row or combining distinct source columns.
+- [ ] Define when merged or spanning source cells can be flattened into a
+      rectangular Markdown table without inventing relationships; otherwise
+      retain the controlled plain-text fallback.
+- [ ] Add focused engine-neutral tests for the generalized geometry patterns
+      and verify sections 11 and 12 against the private sample without
+      committing that document.
+
 ### Group 5: Forms and document fields
 
 - [ ] Define which checkboxes, signature fields, blank result cells, and ruled
@@ -370,3 +393,4 @@ A task is complete when:
 | 2026-09-28 | Used complete repeated-grid evidence to recover segmented ruled tables whose headers are not typographically distinct. |
 | 2026-09-28 | Partitioned horizontal-only ruled regions around local header bands and recovered strongly anchored one-body-row tables. |
 | 2026-09-28 | Recovered short horizontal tables with sparse internal cells while retaining stricter support and truncation requirements for longer candidates. |
+| 2026-09-28 | Reopened table fidelity for sections 11 and 12 after real-sample validation showed incorrect relationships in short adjacent tables and a multi-level revision table. |
