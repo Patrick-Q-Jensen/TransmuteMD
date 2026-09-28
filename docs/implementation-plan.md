@@ -211,7 +211,7 @@ semantic models established by earlier work.
 
 - [x] Detect hierarchical numbered headings and derive consistent heading
       levels while excluding decorative glyphs and document-control metadata.
-- [ ] Recognize contents entries using numbering, indentation, dotted leaders,
+- [x] Recognize contents entries using numbering, indentation, dotted leaders,
       and trailing page numbers.
 - [ ] Add engine-neutral nested-list semantics and render hierarchical
       contents without leader dots.
@@ -340,3 +340,4 @@ A task is complete when:
 | 2026-09-27 | Distinguished consistent positioned-glyph tracking from larger inferred word gaps. |
 | 2026-09-28 | Preserved discretionary hyphens across ambiguous column groups to prevent cross-column word corruption. |
 | 2026-09-28 | Derived numbered heading levels from section depth and excluded decorative and multi-column metadata lines. |
+| 2026-09-28 | Recognized contents entries from section numbering, indentation, dotted leaders, and trailing page numbers. |

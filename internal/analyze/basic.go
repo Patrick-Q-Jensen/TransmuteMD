@@ -128,6 +128,14 @@ type analyzedPage struct {
 	diagnostics []document.Diagnostic
 }
 
+type detectedContentsEntry struct {
+	number    string
+	title     string
+	page      int
+	depth     int
+	lineCount int
+}
+
 func analyzePageLines(
 	ctx context.Context,
 	page document.Page,
@@ -1044,6 +1052,7 @@ func textMargins(lines []textLine, headingLevels []int) (float64, float64) {
 
 func detectHeadingLevels(lines []textLine) []int {
 	levels := make([]int, len(lines))
+	contentsEntries := detectContentsEntries(lines)
 	bodyScale := medianLineScale(lines)
 	bodyWeight := medianLineWeight(lines)
 	if bodyScale <= 0 {
@@ -1055,7 +1064,7 @@ func detectHeadingLevels(lines []textLine) []int {
 		numberedDepth, numbered := numberedHeadingDepth(line.text)
 		if line.text == "" ||
 			!hasSemanticHeadingText(line.text) ||
-			hasDottedLeader(line.text) ||
+			contentsEntries[index] != nil ||
 			!numbered && lineLargeGapCount(line) > 0 ||
 			!hasHeadingSpacing(lines, index, spacingThreshold) {
 			continue
@@ -1102,6 +1111,14 @@ func hasSemanticHeadingText(text string) bool {
 }
 
 func numberedHeadingDepth(text string) (int, bool) {
+	end, depth, ok := numberedPrefix(text)
+	if !ok {
+		return 0, false
+	}
+	return depth, hasSemanticHeadingText(strings.TrimSpace(text[end:]))
+}
+
+func numberedPrefix(text string) (int, int, bool) {
 	index := 0
 	depth := 0
 	for {
@@ -1110,7 +1127,7 @@ func numberedHeadingDepth(text string) (int, bool) {
 			index++
 		}
 		if index == start || index >= len(text) || text[index] != '.' {
-			return 0, false
+			return 0, 0, false
 		}
 		depth++
 		index++
@@ -1119,13 +1136,123 @@ func numberedHeadingDepth(text string) (int, bool) {
 		}
 	}
 	if index >= len(text) {
-		return 0, false
+		return 0, 0, false
 	}
-	return depth, hasSemanticHeadingText(strings.TrimSpace(text[index:]))
+	return index, depth, true
 }
 
-func hasDottedLeader(text string) bool {
-	return strings.Contains(text, "...")
+func detectContentsEntries(lines []textLine) []*detectedContentsEntry {
+	entries := make([]*detectedContentsEntry, len(lines))
+	contentsHeading := -1
+	for index, line := range lines {
+		if strings.EqualFold(strings.TrimSpace(line.text), "contents") {
+			contentsHeading = index
+			break
+		}
+	}
+	if contentsHeading < 0 {
+		return entries
+	}
+
+	rootLeft := math.Inf(1)
+	for index := contentsHeading + 1; index < len(lines); index++ {
+		entry, ok := detectContentsEntry(lines[index].text)
+		if !ok && index+1 < len(lines) {
+			entry, ok = detectWrappedContentsEntry(lines[index], lines[index+1])
+		}
+		if !ok {
+			continue
+		}
+		entries[index] = &entry
+		if entry.depth == 1 {
+			rootLeft = math.Min(rootLeft, lines[index].left)
+		}
+		index += entry.lineCount - 1
+	}
+	if math.IsInf(rootLeft, 1) {
+		return make([]*detectedContentsEntry, len(lines))
+	}
+
+	for index, entry := range entries {
+		if entry == nil || entry.depth == 1 {
+			continue
+		}
+		tolerance := lines[index].scale() * listMarkerAlignRatio
+		if lines[index].left <= rootLeft+tolerance {
+			entries[index] = nil
+		}
+	}
+	return entries
+}
+
+func detectContentsEntry(text string) (detectedContentsEntry, bool) {
+	text = strings.TrimSpace(text)
+	numberEnd, depth, ok := numberedPrefix(text)
+	if !ok {
+		return detectedContentsEntry{}, false
+	}
+	title, page, ok := detectContentsEntryTail(text[numberEnd:])
+	if !ok {
+		return detectedContentsEntry{}, false
+	}
+	return detectedContentsEntry{
+		number:    strings.TrimSpace(text[:numberEnd]),
+		title:     title,
+		page:      page,
+		depth:     depth,
+		lineCount: 1,
+	}, true
+}
+
+func detectWrappedContentsEntry(
+	first,
+	second textLine,
+) (detectedContentsEntry, bool) {
+	text := strings.TrimSpace(first.text)
+	numberEnd, depth, ok := numberedPrefix(text)
+	if !ok || strings.Contains(text[numberEnd:], "...") {
+		return detectedContentsEntry{}, false
+	}
+	firstTitle := strings.TrimSpace(text[numberEnd:])
+	secondTitle, page, ok := detectContentsEntryTail(second.text)
+	scale := math.Max(first.scale(), second.scale())
+	if !ok ||
+		!hasSemanticHeadingText(firstTitle) ||
+		scale <= 0 ||
+		second.top-first.bottom > scale*paragraphGapRatio ||
+		second.left <= first.left+scale*listMarkerAlignRatio {
+		return detectedContentsEntry{}, false
+	}
+	return detectedContentsEntry{
+		number:    strings.TrimSpace(text[:numberEnd]),
+		title:     firstTitle + " " + secondTitle,
+		page:      page,
+		depth:     depth,
+		lineCount: 2,
+	}, true
+}
+
+func detectContentsEntryTail(text string) (string, int, bool) {
+	text = strings.TrimSpace(text)
+	leader := strings.Index(text, "...")
+	if leader <= 0 {
+		return "", 0, false
+	}
+	title := strings.TrimSpace(text[:leader])
+	pageText := strings.Trim(strings.TrimSpace(text[leader:]), ". ")
+	if !hasSemanticHeadingText(title) || pageText == "" {
+		return "", 0, false
+	}
+	for _, value := range pageText {
+		if !unicode.IsDigit(value) {
+			return "", 0, false
+		}
+	}
+	page, err := strconv.Atoi(pageText)
+	if err != nil || page < 1 {
+		return "", 0, false
+	}
+	return title, page, true
 }
 
 func medianLineScale(lines []textLine) float64 {

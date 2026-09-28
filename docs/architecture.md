@@ -142,6 +142,12 @@ gaps characteristic of document-control metadata are not promoted. Ordinary
 emphasized lines remain paragraph text. A nearby, style-matched line following
 a numbered heading is joined as a wrapped title continuation.
 
+Contents entries are recognized after a contents heading when section
+numbering and indentation agree with dotted-leader text ending in a positive
+page number. A more deeply indented adjacent line can complete a wrapped
+entry. All signals are required so numbered body text and ordinary periods
+are not reclassified as navigation.
+
 List inference recognizes common ASCII and Unicode unordered markers and
 decimal ordered markers followed by whitespace. Adjacent marker-aligned items
 of the same kind form a flat semantic list; ordered items must increment
