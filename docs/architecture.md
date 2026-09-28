@@ -93,10 +93,11 @@ annotations are normalized to engine-neutral rectangles and absolute `http`,
 actions remain inside the adapter.
 
 Non-fatal diagnostics are engine-neutral records with a stable code, optional
-page number, and user-facing message. Extraction records unsupported external
-link targets; analysis preserves those records and adds warnings for
-ambiguous link geometry and conservative table-like or code-like text
-fallbacks.
+page number, and user-facing message. Extraction aggregates unsupported link
+annotations by source page and omission category so repeated annotations
+produce one deterministic warning with a count. Analysis preserves those
+records and adds warnings for ambiguous link geometry and conservative
+table-like or code-like text fallbacks.
 
 ### Analysis
 

@@ -222,7 +222,7 @@ semantic models established by earlier work.
       destinations.
 - [x] Associate internal destinations with contents labels and emit stable
       Markdown anchors where possible.
-- [ ] Aggregate repeated unsupported-link diagnostics by page and category.
+- [x] Aggregate repeated unsupported-link diagnostics by page and category.
 
 ### Group 4: Table reconstruction
 
@@ -344,3 +344,4 @@ A task is complete when:
 | 2026-09-28 | Added recursive semantic lists and rendered recognized contents as an indented Markdown hierarchy without leader dots. |
 | 2026-09-28 | Added typed external, page, and named link targets and resolved PDF GoTo destinations inside the PDFium adapter. |
 | 2026-09-28 | Accepted ADR-0006, matched internal links to destination headings, and emitted deterministic Markdown anchors for resolved navigation. |
+| 2026-09-28 | Aggregated unsupported-link diagnostics by source page and omission category while preserving deterministic warning order and counts. |

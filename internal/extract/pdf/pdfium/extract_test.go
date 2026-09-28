@@ -177,8 +177,8 @@ func TestExtractAnnotationLinkMapsInternalGoToPage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("extractAnnotationLink() returned an unexpected error: %v", err)
 	}
-	if !include || omission != "" {
-		t.Fatalf("include/omission = %v/%q, want true/empty", include, omission)
+	if !include || omission != 0 {
+		t.Fatalf("include/omission = %v/%d, want true/zero", include, omission)
 	}
 	want := document.LinkTarget{Kind: document.LinkTargetPage, Page: 5}
 	if link.Target != want {
@@ -213,8 +213,91 @@ func TestExtractAnnotationLinkIgnoresUnsafeURI(t *testing.T) {
 	if include {
 		t.Fatal("extractAnnotationLink() included an unsafe URI")
 	}
-	if omission == "" {
+	if omission == 0 {
 		t.Fatal("extractAnnotationLink() returned no omission diagnostic")
+	}
+	if omission != linkOmissionUnsafeURI {
+		t.Fatalf("omission = %d, want unsafe URI category", omission)
+	}
+}
+
+func TestUnsupportedLinkDiagnosticsAggregateByPageAndCategory(t *testing.T) {
+	t.Parallel()
+
+	got := unsupportedLinkDiagnostics(3, map[linkOmission]int{
+		linkOmissionMissingAction:      1,
+		linkOmissionUnresolvedInternal: 3,
+		linkOmissionUnsafeURI:          4,
+		linkOmissionUnsupportedAction:  2,
+	})
+	want := []document.Diagnostic{
+		{
+			Code:    document.DiagnosticUnsupportedLink,
+			Page:    3,
+			Message: "link without a supported action was preserved as text",
+		},
+		{
+			Code:    document.DiagnosticUnsupportedLink,
+			Page:    3,
+			Message: "3 internal links without resolvable destinations were preserved as text",
+		},
+		{
+			Code:    document.DiagnosticUnsupportedLink,
+			Page:    3,
+			Message: "4 unsupported or unsafe link URIs were preserved as text",
+		},
+		{
+			Code:    document.DiagnosticUnsupportedLink,
+			Page:    3,
+			Message: "2 unsupported link actions were preserved as text",
+		},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("diagnostics = %#v, want %#v", got, want)
+	}
+}
+
+func TestExtractPageLinksAggregatesRepeatedOmissions(t *testing.T) {
+	t.Parallel()
+
+	action := references.FPDF_ACTION("action")
+	uri := "javascript:alert(1)"
+	worker := &instanceStub{
+		log:             &eventLog{},
+		annotationCount: 3,
+		annotation:      "annotation",
+		annotationType:  enums.FPDF_ANNOT_SUBTYPE_LINK,
+		annotationLink:  "link",
+		linkAction:      &action,
+		actionType:      enums.FPDF_ACTION_ACTION_URI,
+		actionURI:       &uri,
+	}
+	counts := extractionCounts{}
+
+	links, diagnostics, err := extractPageLinks(
+		worker,
+		"document",
+		1,
+		792,
+		extract.DefaultLimits(),
+		&counts,
+	)
+	if err != nil {
+		t.Fatalf("extractPageLinks() returned an unexpected error: %v", err)
+	}
+	if len(links) != 0 {
+		t.Fatalf("link count = %d, want 0", len(links))
+	}
+	want := []document.Diagnostic{{
+		Code:    document.DiagnosticUnsupportedLink,
+		Page:    2,
+		Message: "3 unsupported or unsafe link URIs were preserved as text",
+	}}
+	if !slices.Equal(diagnostics, want) {
+		t.Fatalf("diagnostics = %#v, want %#v", diagnostics, want)
+	}
+	if counts.annotations != 3 {
+		t.Fatalf("annotation count = %d, want 3", counts.annotations)
 	}
 }
 
