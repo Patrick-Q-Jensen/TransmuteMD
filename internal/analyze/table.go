@@ -32,6 +32,11 @@ type detectedTableCell struct {
 	runs   []orderedRun
 }
 
+type tableDetection struct {
+	tables   []detectedTable
+	rejected []document.Rectangle
+}
+
 type tableCellContent struct {
 	text  string
 	links []document.TextLink
@@ -45,29 +50,107 @@ type horizontalSegmentGroup struct {
 
 func detectTables(
 	ctx context.Context,
-	rulings []document.Ruling,
+	page document.Page,
 	runs []orderedRun,
-) ([]detectedTable, error) {
-	horizontal, vertical := normalizedTableSegments(rulings)
+) (tableDetection, error) {
+	horizontal, vertical := normalizedTableSegments(page.Rulings)
 	groups := groupHorizontalSegments(horizontal)
-	var tables []detectedTable
+	var result tableDetection
 	for _, group := range groups {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return tableDetection{}, err
 		}
-		table, ok := tableFromHorizontalGroup(group, vertical)
-		if !ok || !assignTableRuns(&table, runs) {
+		bounds, candidate := tableCandidateBounds(group)
+		if !candidate || isPageFurnitureTable(bounds, page.Height) {
 			continue
 		}
-		tables = append(tables, table)
+		table, ok := tableFromHorizontalGroup(group, vertical)
+		if !ok {
+			tableLike, err := hasTableCandidateText(ctx, bounds, runs)
+			if err != nil {
+				return tableDetection{}, err
+			}
+			if tableLike {
+				result.rejected = append(result.rejected, bounds)
+			}
+			continue
+		}
+		if !assignTableRuns(&table, runs) {
+			result.rejected = append(result.rejected, bounds)
+			continue
+		}
+		result.tables = append(result.tables, table)
 	}
-	slices.SortStableFunc(tables, func(left, right detectedTable) int {
+	slices.SortStableFunc(result.tables, func(left, right detectedTable) int {
 		if order := compareFloat(left.bounds.Top, right.bounds.Top); order != 0 {
 			return order
 		}
 		return compareFloat(left.bounds.Left, right.bounds.Left)
 	})
-	return tables, nil
+	slices.SortStableFunc(result.rejected, func(left, right document.Rectangle) int {
+		if order := compareFloat(left.Top, right.Top); order != 0 {
+			return order
+		}
+		return compareFloat(left.Left, right.Left)
+	})
+	return result, nil
+}
+
+func tableCandidateBounds(
+	group horizontalSegmentGroup,
+) (document.Rectangle, bool) {
+	if len(group.lines) < 3 {
+		return document.Rectangle{}, false
+	}
+	top := math.Inf(1)
+	bottom := math.Inf(-1)
+	for _, line := range group.lines {
+		top = math.Min(top, line.position)
+		bottom = math.Max(bottom, line.position)
+	}
+	if bottom-top < minimumTableCellHeight*2 {
+		return document.Rectangle{}, false
+	}
+	return document.Rectangle{
+		Left:   group.left,
+		Top:    top,
+		Right:  group.right,
+		Bottom: bottom,
+	}, true
+}
+
+func isPageFurnitureTable(bounds document.Rectangle, pageHeight float64) bool {
+	return bounds.Bottom <= pageHeight*pageFurnitureBandRatio ||
+		bounds.Top >= pageHeight*(1-pageFurnitureBandRatio)
+}
+
+func hasTableCandidateText(
+	ctx context.Context,
+	bounds document.Rectangle,
+	runs []orderedRun,
+) (bool, error) {
+	var contained []orderedRun
+	for _, run := range runs {
+		centerX := (run.run.Bounds.Left + run.run.Bounds.Right) / 2
+		centerY := verticalCenter(run.run.Bounds)
+		if centerX > bounds.Left &&
+			centerX < bounds.Right &&
+			centerY > bounds.Top &&
+			centerY < bounds.Bottom {
+			contained = append(contained, run)
+		}
+	}
+	lines, err := tableCellLines(ctx, contained)
+	if err != nil {
+		return false, err
+	}
+	gapped := 0
+	for _, line := range lines {
+		if lineLargeGapCount(line) > 0 {
+			gapped++
+		}
+	}
+	return gapped >= 2, nil
 }
 
 func normalizedTableSegments(
@@ -404,21 +487,22 @@ func semanticTable(
 	return result, nil
 }
 
-func lineInsideTable(line textLine, table detectedTable) bool {
+func lineTableMembership(line textLine, table detectedTable) (bool, bool) {
 	if len(line.runs) == 0 {
-		return false
+		return false, false
 	}
+	inside := 0
 	for _, run := range line.runs {
 		centerX := (run.run.Bounds.Left + run.run.Bounds.Right) / 2
 		centerY := verticalCenter(run.run.Bounds)
-		if centerX <= table.bounds.Left ||
-			centerX >= table.bounds.Right ||
-			centerY <= table.bounds.Top ||
-			centerY >= table.bounds.Bottom {
-			return false
+		if centerX > table.bounds.Left &&
+			centerX < table.bounds.Right &&
+			centerY > table.bounds.Top &&
+			centerY < table.bounds.Bottom {
+			inside++
 		}
 	}
-	return true
+	return inside > 0, inside == len(line.runs)
 }
 
 func tableCellLines(

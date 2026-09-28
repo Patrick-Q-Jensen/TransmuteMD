@@ -24,14 +24,17 @@ func TestDetectTablesAssignsRectangularCells(t *testing.T) {
 		tableRun("B", 65, 35, 75, 45),
 	}
 
-	tables, err := detectTables(context.Background(), rulings, runs)
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  100,
+		Rulings: rulings,
+	}, runs)
 	if err != nil {
 		t.Fatalf("detectTables() returned an unexpected error: %v", err)
 	}
-	if len(tables) != 1 {
-		t.Fatalf("table count = %d, want 1", len(tables))
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
 	}
-	table := tables[0]
+	table := result.tables[0]
 	if len(table.rows) != 2 || len(table.columns) != 3 {
 		t.Fatalf("table shape = %dx%d, want 2x2", len(table.rows), len(table.columns)-1)
 	}
@@ -92,12 +95,78 @@ func TestDetectTablesRejectsMergedCellGrid(t *testing.T) {
 		tableRun("B", 65, 35, 75, 45),
 	}
 
-	tables, err := detectTables(context.Background(), rulings, runs)
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  100,
+		Rulings: rulings,
+	}, runs)
 	if err != nil {
 		t.Fatalf("detectTables() returned an unexpected error: %v", err)
 	}
-	if len(tables) != 0 {
-		t.Fatalf("table count = %d, want 0", len(tables))
+	if len(result.tables) != 0 {
+		t.Fatalf("table count = %d, want 0", len(result.tables))
+	}
+}
+
+func TestDetectTablesReportsMergedRuledRegionAsFallback(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 110, 10),
+		horizontalRuling(10, 110, 30),
+		horizontalRuling(10, 110, 50),
+		horizontalRuling(10, 110, 70),
+		verticalRuling(60, 30, 70),
+	}
+	runs := []orderedRun{
+		tableRun("Merged header", 15, 15, 95, 25),
+		tableRun("A", 15, 35, 25, 45),
+		tableRun("B", 65, 35, 75, 45),
+		tableRun("C", 15, 55, 25, 65),
+		tableRun("D", 65, 55, 75, 65),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  100,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 0 {
+		t.Fatalf("table count = %d, want 0", len(result.tables))
+	}
+	if len(result.rejected) != 1 {
+		t.Fatalf("rejected region count = %d, want 1", len(result.rejected))
+	}
+}
+
+func TestDetectTablesRejectsTextCrossingCellBoundary(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 110, 10),
+		horizontalRuling(10, 110, 30),
+		horizontalRuling(10, 110, 50),
+		verticalRuling(60, 10, 50),
+	}
+	runs := []orderedRun{
+		tableRun("Left", 15, 15, 35, 25),
+		tableRun("Right", 65, 15, 95, 25),
+		tableRun("crossing", 50, 35, 70, 45),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  100,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 0 {
+		t.Fatalf("table count = %d, want 0", len(result.tables))
+	}
+	if len(result.rejected) != 1 {
+		t.Fatalf("rejected region count = %d, want 1", len(result.rejected))
 	}
 }
 
@@ -106,8 +175,11 @@ func TestDetectTablesHonorsCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := detectTables(ctx, []document.Ruling{
-		horizontalRuling(10, 110, 10),
+	_, err := detectTables(ctx, document.Page{
+		Height: 100,
+		Rulings: []document.Ruling{
+			horizontalRuling(10, 110, 10),
+		},
 	}, nil)
 	if err == nil {
 		t.Fatal("detectTables() returned nil error for cancelled context")

@@ -74,14 +74,15 @@ func (*BasicAnalyzer) Analyze(
 			return nil, fmt.Errorf("analyze page %d: %w", page.Number, err)
 		}
 
-		lines, diagnostics, err := analyzePageLines(ctx, page)
+		lines, tableFallbacks, diagnostics, err := analyzePageLines(ctx, page)
 		if err != nil {
 			return nil, fmt.Errorf("analyze page %d: %w", page.Number, err)
 		}
 		pages = append(pages, analyzedPage{
-			page:        page,
-			lines:       lines,
-			diagnostics: diagnostics,
+			page:           page,
+			lines:          lines,
+			tableFallbacks: tableFallbacks,
+			diagnostics:    diagnostics,
 		})
 	}
 	if err := suppressRepeatedPageFurniture(ctx, pages); err != nil {
@@ -96,7 +97,11 @@ func (*BasicAnalyzer) Analyze(
 		result.Diagnostics = append(result.Diagnostics, page.diagnostics...)
 		result.Diagnostics = append(
 			result.Diagnostics,
-			structureDiagnostics(page.page.Number, page.lines)...,
+			structureDiagnostics(
+				page.page.Number,
+				page.lines,
+				page.tableFallbacks,
+			)...,
 		)
 		blocks, err := groupBlocks(ctx, page.lines)
 		if err != nil {
@@ -139,9 +144,10 @@ type textLine struct {
 }
 
 type analyzedPage struct {
-	page        document.Page
-	lines       []textLine
-	diagnostics []document.Diagnostic
+	page           document.Page
+	lines          []textLine
+	tableFallbacks []document.Rectangle
+	diagnostics    []document.Diagnostic
 }
 
 type detectedContentsEntry struct {
@@ -172,12 +178,12 @@ func contentsEntryTarget(lines []textLine) document.LinkTarget {
 func analyzePageLines(
 	ctx context.Context,
 	page document.Page,
-) ([]textLine, []document.Diagnostic, error) {
+) ([]textLine, []document.Rectangle, []document.Diagnostic, error) {
 	runs := make([]orderedRun, 0, len(page.TextRuns))
 	ambiguousLink := false
 	for index, run := range page.TextRuns {
 		if err := ctx.Err(); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		text := normalizeRunText(run)
@@ -194,15 +200,16 @@ func analyzePageLines(
 		})
 	}
 
-	tables, err := detectTables(ctx, page.Rulings, runs)
+	detection, err := detectTables(ctx, page, runs)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+	tables := detection.tables
 	tableBlocks := make([]*document.Table, len(tables))
 	for index, table := range tables {
 		tableBlocks[index], err = semanticTable(ctx, table)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 	slices.SortStableFunc(runs, compareRunsVertically)
@@ -219,26 +226,34 @@ func analyzePageLines(
 
 	for index := range lines {
 		if err := ctx.Err(); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		if err := lines[index].finish(ctx); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 	slices.SortStableFunc(lines, compareLines)
 	lines = orderColumns(lines)
-	tablePlaced := make([]bool, len(tables))
-	for lineIndex := range lines {
-		for tableIndex, table := range tables {
-			if !lineInsideTable(lines[lineIndex], table) {
+	for tableIndex, table := range tables {
+		var tableLines []int
+		safe := true
+		for lineIndex, line := range lines {
+			any, all := lineTableMembership(line, table)
+			if !any {
 				continue
 			}
+			tableLines = append(tableLines, lineIndex)
+			safe = safe && all
+		}
+		if !safe || len(tableLines) == 0 {
+			detection.rejected = append(detection.rejected, table.bounds)
+			continue
+		}
+		for index, lineIndex := range tableLines {
 			lines[lineIndex].inTable = true
-			if !tablePlaced[tableIndex] {
+			if index == 0 {
 				lines[lineIndex].table = tableBlocks[tableIndex]
-				tablePlaced[tableIndex] = true
 			}
-			break
 		}
 	}
 
@@ -250,7 +265,7 @@ func analyzePageLines(
 			Message: "overlapping link annotations were preserved as plain text",
 		})
 	}
-	return lines, diagnostics, nil
+	return lines, detection.rejected, diagnostics, nil
 }
 
 func normalizeRunText(run document.TextRun) string {
@@ -300,9 +315,23 @@ func linkTarget(
 	return target, false
 }
 
-func structureDiagnostics(page int, lines []textLine) []document.Diagnostic {
+func structureDiagnostics(
+	page int,
+	lines []textLine,
+	tableFallbacks []document.Rectangle,
+) []document.Diagnostic {
 	var diagnostics []document.Diagnostic
-	if hasTableLikeRegion(lines) {
+	var regions []document.Rectangle
+	for _, region := range append(slices.Clone(tableFallbacks), tableLikeRegions(lines)...) {
+		regions = addTableRegion(regions, region)
+	}
+	slices.SortStableFunc(regions, func(left, right document.Rectangle) int {
+		if order := compareFloat(left.Top, right.Top); order != 0 {
+			return order
+		}
+		return compareFloat(left.Left, right.Left)
+	})
+	for range regions {
 		diagnostics = append(diagnostics, document.Diagnostic{
 			Code:    document.DiagnosticTableLikeText,
 			Page:    page,
@@ -319,19 +348,66 @@ func structureDiagnostics(page int, lines []textLine) []document.Diagnostic {
 	return diagnostics
 }
 
-func hasTableLikeRegion(lines []textLine) bool {
-	consecutive := 0
-	for _, line := range lines {
-		if lineLargeGapCount(line) >= 2 {
-			consecutive++
-			if consecutive >= 3 {
-				return true
-			}
-		} else {
-			consecutive = 0
+func tableLikeRegions(lines []textLine) []document.Rectangle {
+	var regions []document.Rectangle
+	start := -1
+	flush := func(end int) {
+		if start < 0 || end-start < 3 {
+			start = -1
+			return
 		}
+		bounds := document.Rectangle{
+			Left:   math.Inf(1),
+			Top:    math.Inf(1),
+			Right:  math.Inf(-1),
+			Bottom: math.Inf(-1),
+		}
+		for _, line := range lines[start:end] {
+			bounds.Left = math.Min(bounds.Left, line.left)
+			bounds.Top = math.Min(bounds.Top, line.top)
+			bounds.Right = math.Max(bounds.Right, line.right)
+			bounds.Bottom = math.Max(bounds.Bottom, line.bottom)
+		}
+		regions = append(regions, bounds)
+		start = -1
 	}
-	return false
+	for index, line := range lines {
+		if !line.inTable && lineLargeGapCount(line) >= 2 {
+			if start < 0 {
+				start = index
+			}
+			continue
+		}
+		flush(index)
+	}
+	flush(len(lines))
+	return regions
+}
+
+func rectanglesOverlap(left, right document.Rectangle) bool {
+	return math.Min(left.Right, right.Right) > math.Max(left.Left, right.Left) &&
+		math.Min(left.Bottom, right.Bottom) > math.Max(left.Top, right.Top)
+}
+
+func addTableRegion(
+	regions []document.Rectangle,
+	candidate document.Rectangle,
+) []document.Rectangle {
+	for index := 0; index < len(regions); {
+		if !rectanglesOverlap(regions[index], candidate) {
+			index++
+			continue
+		}
+		candidate = document.Rectangle{
+			Left:   math.Min(candidate.Left, regions[index].Left),
+			Top:    math.Min(candidate.Top, regions[index].Top),
+			Right:  math.Max(candidate.Right, regions[index].Right),
+			Bottom: math.Max(candidate.Bottom, regions[index].Bottom),
+		}
+		regions = slices.Delete(regions, index, index+1)
+		index = 0
+	}
+	return append(regions, candidate)
 }
 
 func lineLargeGapCount(line textLine) int {

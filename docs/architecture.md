@@ -198,7 +198,10 @@ runs are assigned by geometry. Every header cell and every column must contain
 text, and text must not cross an internal boundary. Runs within each accepted
 cell are independently ordered into lines before wrapped text is joined, so
 content cannot flow across neighboring columns. Cells are then traversed in
-row-major order. Ambiguous regions fall back to text. The renderer does not
+row-major order. Accepted table lines are removed from paragraph grouping
+without changing the surrounding page order. Rejected ruled regions and
+separate runs of strongly aligned table-like text remain ordinary text and
+produce one diagnostic per non-overlapping region. The renderer does not
 fabricate Markdown delimiters or emit raw HTML.
 
 A future semantic code block requires multiple adjacent lines with consistent

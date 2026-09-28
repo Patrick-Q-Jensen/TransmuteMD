@@ -1165,6 +1165,49 @@ func TestBasicAnalyzerReportsStructureFallbacks(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzerReportsOneFallbackPerTableRegion(t *testing.T) {
+	t.Parallel()
+
+	tableLines := func(top float64) []document.TextRun {
+		var runs []document.TextRun
+		for row := range 3 {
+			y := top + float64(row)*14
+			runs = append(
+				runs,
+				textRun("A", 10, y, 20, y+10),
+				textRun("B", 60, y, 70, y+10),
+				textRun("C", 110, y, 120, y+10),
+			)
+		}
+		return runs
+	}
+	runs := tableLines(10)
+	runs = append(runs, textRun("separator", 10, 60, 50, 70))
+	runs = append(runs, tableLines(90)...)
+	layout := &document.Layout{
+		Pages: []document.Page{{
+			Number:   1,
+			Width:    400,
+			Height:   220,
+			TextRuns: runs,
+		}},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	var tableWarnings int
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.Code == document.DiagnosticTableLikeText {
+			tableWarnings++
+		}
+	}
+	if tableWarnings != 2 {
+		t.Fatalf("table warning count = %d, want 2", tableWarnings)
+	}
+}
+
 func TestBasicAnalyzerProducesSemanticTableInPageOrder(t *testing.T) {
 	t.Parallel()
 
