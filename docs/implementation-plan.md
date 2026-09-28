@@ -218,7 +218,7 @@ semantic models established by earlier work.
 
 ### Group 3: Internal document navigation
 
-- [ ] Extend engine-neutral links to represent internal page and named
+- [x] Extend engine-neutral links to represent internal page and named
       destinations.
 - [ ] Associate internal destinations with contents labels and emit stable
       Markdown anchors where possible.
@@ -342,3 +342,4 @@ A task is complete when:
 | 2026-09-28 | Derived numbered heading levels from section depth and excluded decorative and multi-column metadata lines. |
 | 2026-09-28 | Recognized contents entries from section numbering, indentation, dotted leaders, and trailing page numbers. |
 | 2026-09-28 | Added recursive semantic lists and rendered recognized contents as an indented Markdown hierarchy without leader dots. |
+| 2026-09-28 | Added typed external, page, and named link targets and resolved PDF GoTo destinations inside the PDFium adapter. |

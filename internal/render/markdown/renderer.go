@@ -220,10 +220,15 @@ func renderLinkedText(
 			return "", err
 		}
 		result.WriteString(before)
+		if link.Target.Kind != document.LinkTargetExternal {
+			result.WriteString(label)
+			start = link.End
+			continue
+		}
 		result.WriteByte('[')
 		result.WriteString(label)
 		result.WriteString("](")
-		result.WriteString(escapeLinkDestination(link.Destination))
+		result.WriteString(escapeLinkDestination(link.Target.URI))
 		result.WriteByte(')')
 		start = link.End
 	}

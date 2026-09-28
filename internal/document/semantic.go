@@ -3,7 +3,6 @@ package document
 import (
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 	"unicode/utf8"
 )
@@ -167,9 +166,9 @@ type ListItem struct {
 
 // TextLink identifies linked text by UTF-8 byte offsets.
 type TextLink struct {
-	Start       int
-	End         int
-	Destination string
+	Start  int
+	End    int
+	Target LinkTarget
 }
 
 func validateTextLinks(text string, links []TextLink) error {
@@ -186,15 +185,8 @@ func validateTextLinks(text string, links []TextLink) error {
 		if strings.ContainsAny(text[link.Start:link.End], "\r\n") {
 			return fmt.Errorf("link %d text must be a single line", index+1)
 		}
-		destination, err := url.Parse(link.Destination)
-		if err != nil || !destination.IsAbs() {
-			return fmt.Errorf("link %d destination must be an absolute HTTP, HTTPS, or mailto URI", index+1)
-		}
-		scheme := strings.ToLower(destination.Scheme)
-		if scheme != "http" && scheme != "https" && scheme != "mailto" ||
-			(scheme == "http" || scheme == "https") && destination.Host == "" ||
-			scheme == "mailto" && destination.Opaque == "" {
-			return fmt.Errorf("link %d destination must be an absolute HTTP, HTTPS, or mailto URI", index+1)
+		if err := link.Target.Validate(); err != nil {
+			return fmt.Errorf("link %d target: %w", index+1, err)
 		}
 		previousEnd = link.End
 	}

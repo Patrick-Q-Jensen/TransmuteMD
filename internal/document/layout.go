@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
+	"strings"
 )
 
 // Layout contains the observed physical content of a source document.
@@ -20,6 +22,17 @@ func (l Layout) Validate() error {
 		}
 		if err := page.Validate(); err != nil {
 			return fmt.Errorf("page %d: %w", page.Number, err)
+		}
+		for linkIndex, link := range page.Links {
+			if link.Target.Kind == LinkTargetPage &&
+				link.Target.Page > len(l.Pages) {
+				return fmt.Errorf(
+					"page %d: link %d: target page must not exceed document page count %d",
+					page.Number,
+					linkIndex+1,
+					len(l.Pages),
+				)
+			}
 		}
 	}
 	return validateDiagnostics(l.Diagnostics)
@@ -56,10 +69,10 @@ func (p Page) Validate() error {
 	return nil
 }
 
-// LinkAnnotation is a reliable external link observed in the source layout.
+// LinkAnnotation is a reliable link observed in the source layout.
 type LinkAnnotation struct {
-	Bounds      Rectangle
-	Destination string
+	Bounds Rectangle
+	Target LinkTarget
 }
 
 // Validate checks link annotation geometry and destination.
@@ -67,10 +80,69 @@ func (l LinkAnnotation) Validate() error {
 	if err := l.Bounds.Validate(); err != nil {
 		return fmt.Errorf("bounds: %w", err)
 	}
-	if l.Destination == "" {
-		return errors.New("destination must not be empty")
+	if err := l.Target.Validate(); err != nil {
+		return fmt.Errorf("target: %w", err)
 	}
 	return nil
+}
+
+// LinkTargetKind identifies the destination represented by a link target.
+type LinkTargetKind uint8
+
+const (
+	// LinkTargetExternal identifies an absolute HTTP, HTTPS, or mailto URI.
+	LinkTargetExternal LinkTargetKind = iota + 1
+	// LinkTargetPage identifies a one-based page in the current document.
+	LinkTargetPage
+	// LinkTargetNamed identifies a named destination in the current document.
+	LinkTargetNamed
+)
+
+// LinkTarget is an engine-neutral external or intra-document destination.
+type LinkTarget struct {
+	Kind LinkTargetKind
+	URI  string
+	Page int
+	Name string
+}
+
+// Validate checks that exactly the fields required by the target kind are set.
+func (t LinkTarget) Validate() error {
+	switch t.Kind {
+	case LinkTargetExternal:
+		if t.Page != 0 ||
+			t.Name != "" ||
+			t.URI != strings.TrimSpace(t.URI) ||
+			!isReliableExternalURI(t.URI) {
+			return errors.New("external target must contain only an absolute HTTP, HTTPS, or mailto URI")
+		}
+	case LinkTargetPage:
+		if t.URI != "" || t.Name != "" || t.Page < 1 {
+			return errors.New("page target must contain only a positive one-based page number")
+		}
+	case LinkTargetNamed:
+		if t.URI != "" || t.Page != 0 || strings.TrimSpace(t.Name) == "" {
+			return errors.New("named target must contain only a non-empty name")
+		}
+	default:
+		return fmt.Errorf("unsupported target kind %d", t.Kind)
+	}
+	return nil
+}
+
+func isReliableExternalURI(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || !parsed.IsAbs() {
+		return false
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https":
+		return parsed.Host != ""
+	case "mailto":
+		return parsed.Opaque != ""
+	default:
+		return false
+	}
 }
 
 // TextRun is consecutive text that shares physical placement and style

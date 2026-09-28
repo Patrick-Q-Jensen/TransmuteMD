@@ -17,7 +17,14 @@ func TestDocumentValidate(t *testing.T) {
 			&document.Paragraph{
 				Text: "Visit the site.",
 				Links: []document.TextLink{
-					{Start: 10, End: 14, Destination: "https://example.test"},
+					{
+						Start: 10,
+						End:   14,
+						Target: document.LinkTarget{
+							Kind: document.LinkTargetExternal,
+							URI:  "https://example.test",
+						},
+					},
 				},
 			},
 			&document.List{
@@ -163,10 +170,38 @@ func TestDocumentValidateRejectsInvalidTextLink(t *testing.T) {
 	t.Parallel()
 
 	tests := []document.TextLink{
-		{Start: -1, End: 1, Destination: "https://example.test"},
-		{Start: 0, End: 20, Destination: "https://example.test"},
-		{Start: 0, End: 4, Destination: "relative"},
-		{Start: 0, End: 4, Destination: "javascript:alert(1)"},
+		{
+			Start: -1,
+			End:   1,
+			Target: document.LinkTarget{
+				Kind: document.LinkTargetExternal,
+				URI:  "https://example.test",
+			},
+		},
+		{
+			Start: 0,
+			End:   20,
+			Target: document.LinkTarget{
+				Kind: document.LinkTargetExternal,
+				URI:  "https://example.test",
+			},
+		},
+		{
+			Start: 0,
+			End:   4,
+			Target: document.LinkTarget{
+				Kind: document.LinkTargetExternal,
+				URI:  "relative",
+			},
+		},
+		{
+			Start: 0,
+			End:   4,
+			Target: document.LinkTarget{
+				Kind: document.LinkTargetExternal,
+				URI:  "javascript:alert(1)",
+			},
+		},
 	}
 	for _, link := range tests {
 		doc := document.Document{Blocks: []document.Block{

@@ -941,8 +941,11 @@ func TestBasicAnalyzerMapsLinkAnnotationsToSemanticText(t *testing.T) {
 				},
 				Links: []document.LinkAnnotation{
 					{
-						Bounds:      document.Rectangle{Left: 35, Top: 8, Right: 80, Bottom: 22},
-						Destination: "https://example.test/docs",
+						Bounds: document.Rectangle{Left: 35, Top: 8, Right: 80, Bottom: 22},
+						Target: document.LinkTarget{
+							Kind: document.LinkTargetExternal,
+							URI:  "https://example.test/docs",
+						},
 					},
 				},
 			},
@@ -961,10 +964,49 @@ func TestBasicAnalyzerMapsLinkAnnotationsToSemanticText(t *testing.T) {
 		t.Fatalf("paragraph text = %q, want %q", got, want)
 	}
 	wantLinks := []document.TextLink{
-		{Start: 5, End: 13, Destination: "https://example.test/docs"},
+		{
+			Start: 5,
+			End:   13,
+			Target: document.LinkTarget{
+				Kind: document.LinkTargetExternal,
+				URI:  "https://example.test/docs",
+			},
+		},
 	}
 	if !reflect.DeepEqual(paragraph.Links, wantLinks) {
 		t.Fatalf("paragraph links = %#v, want %#v", paragraph.Links, wantLinks)
+	}
+}
+
+func TestBasicAnalyzerMapsInternalPageLink(t *testing.T) {
+	t.Parallel()
+
+	target := document.LinkTarget{Kind: document.LinkTargetPage, Page: 1}
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number:   1,
+				Width:    220,
+				Height:   220,
+				TextRuns: []document.TextRun{textRun("Contents", 10, 10, 70, 20)},
+				Links: []document.LinkAnnotation{
+					{
+						Bounds: document.Rectangle{Left: 8, Top: 8, Right: 72, Bottom: 22},
+						Target: target,
+					},
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	paragraph := result.Blocks[0].(*document.Paragraph)
+	want := []document.TextLink{{Start: 0, End: 8, Target: target}}
+	if !reflect.DeepEqual(paragraph.Links, want) {
+		t.Fatalf("paragraph links = %#v, want %#v", paragraph.Links, want)
 	}
 }
 
@@ -1033,12 +1075,18 @@ func TestBasicAnalyzerReportsAmbiguousLinkAnnotations(t *testing.T) {
 				},
 				Links: []document.LinkAnnotation{
 					{
-						Bounds:      document.Rectangle{Left: 8, Top: 8, Right: 42, Bottom: 22},
-						Destination: "https://example.test/one",
+						Bounds: document.Rectangle{Left: 8, Top: 8, Right: 42, Bottom: 22},
+						Target: document.LinkTarget{
+							Kind: document.LinkTargetExternal,
+							URI:  "https://example.test/one",
+						},
 					},
 					{
-						Bounds:      document.Rectangle{Left: 8, Top: 8, Right: 42, Bottom: 22},
-						Destination: "https://example.test/two",
+						Bounds: document.Rectangle{Left: 8, Top: 8, Right: 42, Bottom: 22},
+						Target: document.LinkTarget{
+							Kind: document.LinkTargetExternal,
+							URI:  "https://example.test/two",
+						},
 					},
 				},
 			},

@@ -34,6 +34,7 @@ var (
 	errNilAnnotLink      = errors.New("PDFium returned no annotation link")
 	errNilLinkAction     = errors.New("PDFium returned no link action")
 	errNilActionType     = errors.New("PDFium returned no action type")
+	errNilDestPageIndex  = errors.New("PDFium returned no destination page index")
 	errNilAnnotRect      = errors.New("PDFium returned no annotation rectangle")
 	errMismatchedPage    = errors.New("PDFium returned data for an unexpected page")
 )
@@ -361,6 +362,28 @@ func extractAnnotationLink(
 	if link == nil || link.Link == "" {
 		return document.LinkAnnotation{}, false, "", errNilAnnotLink
 	}
+	directDestination, err := worker.FPDFLink_GetDest(&requests.FPDFLink_GetDest{
+		Document: pdf,
+		Link:     link.Link,
+	})
+	if err != nil {
+		return document.LinkAnnotation{}, false, "", fmt.Errorf("get destination: %w", err)
+	}
+	if directDestination != nil && directDestination.Dest != nil {
+		target, ok, err := extractPageTarget(
+			worker,
+			pdf,
+			*directDestination.Dest,
+		)
+		if err != nil {
+			return document.LinkAnnotation{}, false, "", err
+		}
+		if !ok {
+			return document.LinkAnnotation{}, false,
+				"internal link without a resolvable page was preserved as text", nil
+		}
+		return linkAnnotation(worker, annotation, pageHeight, target)
+	}
 	action, err := worker.FPDFLink_GetAction(&requests.FPDFLink_GetAction{
 		Link: link.Link,
 	})
@@ -383,24 +406,91 @@ func extractAnnotationLink(
 	if actionType == nil {
 		return document.LinkAnnotation{}, false, "", errNilActionType
 	}
-	if actionType.Type != enums.FPDF_ACTION_ACTION_URI {
+	var target document.LinkTarget
+	switch actionType.Type {
+	case enums.FPDF_ACTION_ACTION_GOTO:
+		destination, err := worker.FPDFAction_GetDest(&requests.FPDFAction_GetDest{
+			Document: pdf,
+			Action:   *action.Action,
+		})
+		if err != nil {
+			return document.LinkAnnotation{}, false, "", fmt.Errorf("get action destination: %w", err)
+		}
+		if destination == nil || destination.Dest == nil {
+			return document.LinkAnnotation{}, false,
+				"internal link without a resolvable destination was preserved as text", nil
+		}
+		var ok bool
+		target, ok, err = extractPageTarget(worker, pdf, *destination.Dest)
+		if err != nil {
+			return document.LinkAnnotation{}, false, "", err
+		}
+		if !ok {
+			return document.LinkAnnotation{}, false,
+				"internal link without a resolvable page was preserved as text", nil
+		}
+	case enums.FPDF_ACTION_ACTION_URI:
+		uri, err := worker.FPDFAction_GetURIPath(&requests.FPDFAction_GetURIPath{
+			Document: pdf,
+			Action:   *action.Action,
+		})
+		if err != nil {
+			return document.LinkAnnotation{}, false, "", fmt.Errorf("get URI: %w", err)
+		}
+		if uri == nil {
+			return document.LinkAnnotation{}, false, "", errors.New("PDFium returned no action URI")
+		}
+		if uri.URIPath == nil || !isReliableExternalURI(*uri.URIPath) {
+			return document.LinkAnnotation{}, false,
+				"unsupported or unsafe link URI was preserved as text", nil
+		}
+		target = document.LinkTarget{
+			Kind: document.LinkTargetExternal,
+			URI:  strings.TrimSpace(*uri.URIPath),
+		}
+	default:
 		return document.LinkAnnotation{}, false,
-			"non-URI link target was preserved as text", nil
+			"unsupported link action was preserved as text", nil
 	}
-	uri, err := worker.FPDFAction_GetURIPath(&requests.FPDFAction_GetURIPath{
-		Document: pdf,
-		Action:   *action.Action,
-	})
+	return linkAnnotation(worker, annotation, pageHeight, target)
+}
+
+func extractPageTarget(
+	worker instance,
+	pdf references.FPDF_DOCUMENT,
+	destination references.FPDF_DEST,
+) (document.LinkTarget, bool, error) {
+	page, err := worker.FPDFDest_GetDestPageIndex(
+		&requests.FPDFDest_GetDestPageIndex{
+			Document: pdf,
+			Dest:     destination,
+		},
+	)
 	if err != nil {
-		return document.LinkAnnotation{}, false, "", fmt.Errorf("get URI: %w", err)
+		return document.LinkTarget{}, false, fmt.Errorf("get destination page: %w", err)
 	}
-	if uri == nil {
-		return document.LinkAnnotation{}, false, "", errors.New("PDFium returned no action URI")
+	if page == nil {
+		return document.LinkTarget{}, false, errNilDestPageIndex
 	}
-	if uri.URIPath == nil || !isReliableExternalURI(*uri.URIPath) {
-		return document.LinkAnnotation{}, false,
-			"unsupported or unsafe link URI was preserved as text", nil
+	if page.Index < 0 {
+		return document.LinkTarget{}, false, nil
 	}
+	target := document.LinkTarget{
+		Kind: document.LinkTargetPage,
+		Page: page.Index + 1,
+	}
+	if err := target.Validate(); err != nil {
+		return document.LinkTarget{}, false, err
+	}
+	return target, true, nil
+}
+
+func linkAnnotation(
+	worker instance,
+	annotation references.FPDF_ANNOTATION,
+	pageHeight float64,
+	target document.LinkTarget,
+) (document.LinkAnnotation, bool, string, error) {
 	rect, err := worker.FPDFAnnot_GetRect(&requests.FPDFAnnot_GetRect{
 		Annotation: annotation,
 	})
@@ -418,7 +508,7 @@ func extractAnnotationLink(
 			Right:  float64(rect.Rect.Right),
 			Bottom: pageHeight - float64(rect.Rect.Bottom),
 		},
-		Destination: strings.TrimSpace(*uri.URIPath),
+		Target: target,
 	}
 	if err := result.Validate(); err != nil {
 		return document.LinkAnnotation{}, false, "", err

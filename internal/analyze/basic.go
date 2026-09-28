@@ -105,10 +105,10 @@ func (*BasicAnalyzer) Analyze(
 }
 
 type orderedRun struct {
-	run             document.TextRun
-	text            string
-	index           int
-	linkDestination string
+	run        document.TextRun
+	text       string
+	index      int
+	linkTarget document.LinkTarget
 }
 
 type textLine struct {
@@ -151,13 +151,13 @@ func analyzePageLines(
 		if text == "" {
 			continue
 		}
-		destination, ambiguous := linkDestination(run.Bounds, page.Links)
+		target, ambiguous := linkTarget(run.Bounds, page.Links)
 		ambiguousLink = ambiguousLink || ambiguous
 		runs = append(runs, orderedRun{
-			run:             run,
-			text:            text,
-			index:           index,
-			linkDestination: destination,
+			run:        run,
+			text:       text,
+			index:      index,
+			linkTarget: target,
 		})
 	}
 
@@ -222,24 +222,24 @@ func normalizeRunText(run document.TextRun) string {
 	return ""
 }
 
-func linkDestination(
+func linkTarget(
 	bounds document.Rectangle,
 	links []document.LinkAnnotation,
-) (string, bool) {
+) (document.LinkTarget, bool) {
 	centerX := (bounds.Left + bounds.Right) / 2
 	centerY := (bounds.Top + bounds.Bottom) / 2
-	destination := ""
+	var target document.LinkTarget
 	for _, link := range links {
 		if centerX < link.Bounds.Left || centerX > link.Bounds.Right ||
 			centerY < link.Bounds.Top || centerY > link.Bounds.Bottom {
 			continue
 		}
-		if destination != "" && destination != link.Destination {
-			return "", true
+		if target.Kind != 0 && target != link.Target {
+			return document.LinkTarget{}, true
 		}
-		destination = link.Destination
+		target = link.Target
 	}
-	return destination, false
+	return target, false
 }
 
 func structureDiagnostics(page int, lines []textLine) []document.Diagnostic {
@@ -444,18 +444,18 @@ func (line *textLine) finish(ctx context.Context) error {
 	var previous *orderedRun
 	spacePending := false
 	trackingGapThreshold := line.trackingGapThreshold()
-	activeLink := ""
+	var activeLink document.LinkTarget
 	activeStart := 0
 	closeLink := func() {
-		if activeLink == "" {
+		if activeLink.Kind == 0 {
 			return
 		}
 		line.links = append(line.links, document.TextLink{
-			Start:       activeStart,
-			End:         result.Len(),
-			Destination: activeLink,
+			Start:  activeStart,
+			End:    result.Len(),
+			Target: activeLink,
 		})
-		activeLink = ""
+		activeLink = document.LinkTarget{}
 	}
 	for index := range line.runs {
 		if err := ctx.Err(); err != nil {
@@ -478,14 +478,14 @@ func (line *textLine) finish(ctx context.Context) error {
 					current.run,
 					trackingGapThreshold,
 				))
-		if current.linkDestination != activeLink {
+		if current.linkTarget != activeLink {
 			closeLink()
 		}
 		if addSpace {
 			result.WriteByte(' ')
 		}
-		if current.linkDestination != "" && current.linkDestination != activeLink {
-			activeLink = current.linkDestination
+		if current.linkTarget.Kind != 0 && current.linkTarget != activeLink {
+			activeLink = current.linkTarget
 			activeStart = result.Len()
 		}
 		result.WriteString(text)

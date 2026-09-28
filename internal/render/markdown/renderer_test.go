@@ -118,9 +118,12 @@ func TestRendererWritesSemanticLinks(t *testing.T) {
 				Text: "Read *the docs*.",
 				Links: []document.TextLink{
 					{
-						Start:       5,
-						End:         15,
-						Destination: "https://example.test/a_(b)?x=1&y=2",
+						Start: 5,
+						End:   15,
+						Target: document.LinkTarget{
+							Kind: document.LinkTargetExternal,
+							URI:  "https://example.test/a_(b)?x=1&y=2",
+						},
 					},
 				},
 			},

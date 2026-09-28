@@ -122,9 +122,13 @@ func TestExtractorMapsPDFiumLayout(t *testing.T) {
 		t.Fatalf("link count = %d, want %d", got, want)
 	}
 	link := page.Links[0]
-	if link.Destination != uri {
-		t.Errorf("link destination = %q, want %q", link.Destination, uri)
+	if link.Target != (document.LinkTarget{
+		Kind: document.LinkTargetExternal,
+		URI:  uri,
+	}) {
+		t.Errorf("link target = %+v, want external URI %q", link.Target, uri)
 	}
+
 	if link.Bounds != (document.Rectangle{Left: 70, Top: 70, Right: 90, Bottom: 86}) {
 		t.Errorf("link bounds = %+v, want normalized PDF rectangle", link.Bounds)
 	}
@@ -140,6 +144,45 @@ func TestExtractorMapsPDFiumLayout(t *testing.T) {
 	}
 	if worker.textRequest.Mode != "char" || !worker.textRequest.CollectFontInformation {
 		t.Fatalf("structured text request = %+v, want character mode with font information", worker.textRequest)
+	}
+}
+
+func TestExtractAnnotationLinkMapsInternalGoToPage(t *testing.T) {
+	t.Parallel()
+
+	action := references.FPDF_ACTION("action")
+	destination := references.FPDF_DEST("destination")
+	worker := &instanceStub{
+		log:            &eventLog{},
+		annotationType: enums.FPDF_ANNOT_SUBTYPE_LINK,
+		annotationLink: "link",
+		linkAction:     &action,
+		actionType:     enums.FPDF_ACTION_ACTION_GOTO,
+		actionDest:     &destination,
+		destPageIndex:  4,
+		annotationRect: structs.FPDF_FS_RECTF{
+			Left:   70,
+			Top:    722,
+			Right:  90,
+			Bottom: 706,
+		},
+	}
+
+	link, include, omission, err := extractAnnotationLink(
+		worker,
+		"document",
+		"annotation",
+		792,
+	)
+	if err != nil {
+		t.Fatalf("extractAnnotationLink() returned an unexpected error: %v", err)
+	}
+	if !include || omission != "" {
+		t.Fatalf("include/omission = %v/%q, want true/empty", include, omission)
+	}
+	want := document.LinkTarget{Kind: document.LinkTargetPage, Page: 5}
+	if link.Target != want {
+		t.Fatalf("link target = %+v, want %+v", link.Target, want)
 	}
 }
 

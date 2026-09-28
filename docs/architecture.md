@@ -173,10 +173,14 @@ page, including digit-normalized page numbers, are suppressed only when they
 occur in the same header or footer alignment on at least three pages and
 two-thirds of the document. Repeated text in the body is preserved.
 
-Link annotations are associated with text runs whose centers fall within an
-unambiguous annotation rectangle. Analysis carries the resulting UTF-8 byte
-ranges into paragraphs, headings, and list items. Overlapping annotations
-with different destinations remain plain text rather than guessing.
+Link annotations use engine-neutral typed targets for reliable external URIs,
+one-based pages, and named destinations. PDFium direct destinations and GoTo
+actions are resolved to page targets inside the adapter; the neutral model can
+also retain names supplied by an engine. Annotations are associated with text
+runs whose centers fall within an unambiguous annotation rectangle. Analysis
+carries the resulting UTF-8 byte ranges into paragraphs, headings, and list
+items. Overlapping annotations with different targets remain plain text rather
+than guessing.
 
 ### Tables and code-like text
 
@@ -213,8 +217,9 @@ single-blank-line block separation used for paragraphs. Flat semantic lists
 render with `-` markers or preserved decimal starting numbers. Item text is
 escaped as plain text, and explicit item line breaks receive Markdown
 continuation indentation.
-Validated semantic links render as Markdown links with escaped labels and
-destinations. Only absolute HTTP, HTTPS, and mailto destinations are accepted.
+Validated external semantic links render as Markdown links with escaped labels
+and destinations. Internal targets remain typed semantic links while stable
+anchor association is resolved; unmatched targets retain visible label text.
 
 ## 6. Package boundaries
 

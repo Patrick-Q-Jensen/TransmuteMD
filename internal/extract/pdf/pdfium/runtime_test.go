@@ -78,9 +78,12 @@ type instanceStub struct {
 	annotationType     enums.FPDF_ANNOTATION_SUBTYPE
 	annotationTypeErr  error
 	annotationLink     references.FPDF_LINK
+	linkDest           *references.FPDF_DEST
 	linkAction         *references.FPDF_ACTION
 	actionType         enums.FPDF_ACTION_ACTION
+	actionDest         *references.FPDF_DEST
 	actionURI          *string
+	destPageIndex      int
 	annotationRect     structs.FPDF_FS_RECTF
 	closeAnnotationErr error
 	closeErr           error
@@ -175,16 +178,34 @@ func (i *instanceStub) FPDFLink_GetAction(
 	return &responses.FPDFLink_GetAction{Action: i.linkAction}, nil
 }
 
+func (i *instanceStub) FPDFLink_GetDest(
+	*requests.FPDFLink_GetDest,
+) (*responses.FPDFLink_GetDest, error) {
+	return &responses.FPDFLink_GetDest{Dest: i.linkDest}, nil
+}
+
 func (i *instanceStub) FPDFAction_GetType(
 	*requests.FPDFAction_GetType,
 ) (*responses.FPDFAction_GetType, error) {
 	return &responses.FPDFAction_GetType{Type: i.actionType}, nil
 }
 
+func (i *instanceStub) FPDFAction_GetDest(
+	*requests.FPDFAction_GetDest,
+) (*responses.FPDFAction_GetDest, error) {
+	return &responses.FPDFAction_GetDest{Dest: i.actionDest}, nil
+}
+
 func (i *instanceStub) FPDFAction_GetURIPath(
 	*requests.FPDFAction_GetURIPath,
 ) (*responses.FPDFAction_GetURIPath, error) {
 	return &responses.FPDFAction_GetURIPath{URIPath: i.actionURI}, nil
+}
+
+func (i *instanceStub) FPDFDest_GetDestPageIndex(
+	*requests.FPDFDest_GetDestPageIndex,
+) (*responses.FPDFDest_GetDestPageIndex, error) {
+	return &responses.FPDFDest_GetDestPageIndex{Index: i.destPageIndex}, nil
 }
 
 func (i *instanceStub) Close() error {

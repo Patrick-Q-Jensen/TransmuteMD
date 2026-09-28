@@ -30,8 +30,11 @@ func TestLayoutValidate(t *testing.T) {
 				},
 				Links: []document.LinkAnnotation{
 					{
-						Bounds:      document.Rectangle{Left: 72, Top: 72, Right: 150, Bottom: 84},
-						Destination: "https://example.test",
+						Bounds: document.Rectangle{Left: 72, Top: 72, Right: 150, Bottom: 84},
+						Target: document.LinkTarget{
+							Kind: document.LinkTargetExternal,
+							URI:  "https://example.test",
+						},
 					},
 				},
 			},
@@ -53,8 +56,64 @@ func TestPageValidateRejectsInvalidLink(t *testing.T) {
 			{Bounds: document.Rectangle{Left: 1, Top: 1, Right: 2, Bottom: 2}},
 		},
 	}
+
 	if err := page.Validate(); err == nil {
 		t.Fatal("Validate() returned nil for a link without a destination")
+	}
+}
+
+func TestLayoutValidateRejectsOutOfRangePageLink(t *testing.T) {
+	t.Parallel()
+
+	layout := document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  612,
+				Height: 792,
+				Links: []document.LinkAnnotation{
+					{
+						Bounds: document.Rectangle{Left: 1, Top: 1, Right: 2, Bottom: 2},
+						Target: document.LinkTarget{
+							Kind: document.LinkTargetPage,
+							Page: 2,
+						},
+					},
+				},
+			},
+		},
+	}
+	if err := layout.Validate(); err == nil {
+		t.Fatal("Validate() returned nil for an out-of-range page target")
+	}
+}
+
+func TestLinkTargetValidate(t *testing.T) {
+	t.Parallel()
+
+	valid := []document.LinkTarget{
+		{Kind: document.LinkTargetExternal, URI: "https://example.test"},
+		{Kind: document.LinkTargetPage, Page: 2},
+		{Kind: document.LinkTargetNamed, Name: "section-two"},
+	}
+	for _, target := range valid {
+		if err := target.Validate(); err != nil {
+			t.Fatalf("Validate() returned an unexpected error for %+v: %v", target, err)
+		}
+	}
+
+	invalid := []document.LinkTarget{
+		{},
+		{Kind: document.LinkTargetExternal, URI: "relative"},
+		{Kind: document.LinkTargetExternal, URI: " https://example.test"},
+		{Kind: document.LinkTargetPage},
+		{Kind: document.LinkTargetNamed, Name: " "},
+		{Kind: document.LinkTargetPage, Page: 1, Name: "mixed"},
+	}
+	for _, target := range invalid {
+		if err := target.Validate(); err == nil {
+			t.Fatalf("Validate() returned nil for invalid target %+v", target)
+		}
 	}
 }
 
