@@ -779,7 +779,8 @@ func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error
 		list = nil
 	}
 
-	for index, line := range lines {
+	for index := 0; index < len(lines); index++ {
+		line := lines[index]
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -793,10 +794,22 @@ func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error
 		if headingLevels[index] != 0 {
 			flushParagraph()
 			flushList()
+			text := line.text
+			links := slices.Clone(line.links)
+			if index+1 < len(lines) &&
+				isNumberedHeadingContinuation(
+					line,
+					lines[index+1],
+					headingLevels[index],
+					headingLevels[index+1],
+				) {
+				text, links = joinHeadingLines(text, links, lines[index+1])
+				index++
+			}
 			blocks = append(blocks, &document.Heading{
 				Level: headingLevels[index],
-				Text:  line.text,
-				Links: line.links,
+				Text:  text,
+				Links: links,
 			})
 			continue
 		}
@@ -829,6 +842,42 @@ func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error
 	flushList()
 
 	return blocks, nil
+}
+
+func isNumberedHeadingContinuation(
+	current,
+	next textLine,
+	currentLevel,
+	nextLevel int,
+) bool {
+	if currentLevel == 0 || currentLevel != nextLevel {
+		return false
+	}
+	if _, numbered := numberedHeadingDepth(current.text); !numbered {
+		return false
+	}
+	if _, numbered := numberedHeadingDepth(next.text); numbered {
+		return false
+	}
+	scale := math.Max(current.scale(), next.scale())
+	return scale > 0 &&
+		next.top-current.bottom <= scale*paragraphGapRatio &&
+		current.weight() == next.weight()
+}
+
+func joinHeadingLines(
+	text string,
+	links []document.TextLink,
+	next textLine,
+) (string, []document.TextLink) {
+	offset := len(text) + 1
+	text += " " + next.text
+	for _, link := range next.links {
+		link.Start += offset
+		link.End += offset
+		links = append(links, link)
+	}
+	return text, links
 }
 
 type detectedListItem struct {
@@ -1003,10 +1052,12 @@ func detectHeadingLevels(lines []textLine) []int {
 	spacingThreshold := math.Max(bodyScale*0.35, medianLineGap(lines)*1.5)
 
 	for index, line := range lines {
-		if line.text == "" || !hasHeadingSpacing(lines, index, spacingThreshold) {
-			continue
-		}
-		if _, ok := detectListItem(line.text); ok {
+		numberedDepth, numbered := numberedHeadingDepth(line.text)
+		if line.text == "" ||
+			!hasSemanticHeadingText(line.text) ||
+			hasDottedLeader(line.text) ||
+			!numbered && lineLargeGapCount(line) > 0 ||
+			!hasHeadingSpacing(lines, index, spacingThreshold) {
 			continue
 		}
 
@@ -1015,6 +1066,13 @@ func detectHeadingLevels(lines []textLine) []int {
 			line.weight() >= bodyWeight+200 &&
 			hasStrongHeadingSpacing(lines, index, spacingThreshold)
 		if scaleRatio < 1.15 && !boldEvidence {
+			continue
+		}
+		if numbered {
+			levels[index] = min(numberedDepth, 6)
+			continue
+		}
+		if _, ok := detectListItem(line.text); ok {
 			continue
 		}
 
@@ -1028,6 +1086,46 @@ func detectHeadingLevels(lines []textLine) []int {
 		}
 	}
 	return levels
+}
+
+func hasSemanticHeadingText(text string) bool {
+	count := 0
+	for _, value := range text {
+		if unicode.IsLetter(value) || unicode.IsDigit(value) {
+			count++
+			if count >= 2 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func numberedHeadingDepth(text string) (int, bool) {
+	index := 0
+	depth := 0
+	for {
+		start := index
+		for index < len(text) && text[index] >= '0' && text[index] <= '9' {
+			index++
+		}
+		if index == start || index >= len(text) || text[index] != '.' {
+			return 0, false
+		}
+		depth++
+		index++
+		if index >= len(text) || text[index] == ' ' || text[index] == '\t' {
+			break
+		}
+	}
+	if index >= len(text) {
+		return 0, false
+	}
+	return depth, hasSemanticHeadingText(strings.TrimSpace(text[index:]))
+}
+
+func hasDottedLeader(text string) bool {
+	return strings.Contains(text, "...")
 }
 
 func medianLineScale(lines []textLine) float64 {

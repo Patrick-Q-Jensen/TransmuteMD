@@ -209,7 +209,7 @@ semantic models established by earlier work.
 
 ### Group 2: Heading and contents structure
 
-- [ ] Detect hierarchical numbered headings and derive consistent heading
+- [x] Detect hierarchical numbered headings and derive consistent heading
       levels while excluding decorative glyphs and document-control metadata.
 - [ ] Recognize contents entries using numbering, indentation, dotted leaders,
       and trailing page numbers.
@@ -339,3 +339,4 @@ A task is complete when:
 | 2026-09-27 | Normalized PDFium U+0002 discretionary breaks and rejoined affected wrapped words. |
 | 2026-09-27 | Distinguished consistent positioned-glyph tracking from larger inferred word gaps. |
 | 2026-09-28 | Preserved discretionary hyphens across ambiguous column groups to prevent cross-column word corruption. |
+| 2026-09-28 | Derived numbered heading levels from section depth and excluded decorative and multi-column metadata lines. |

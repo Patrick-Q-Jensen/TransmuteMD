@@ -135,8 +135,12 @@ remain separate analysis work.
 Heading inference compares each line's largest observed font size and weight
 with page-level median body evidence. A materially larger line with boundary
 or above-normal spacing becomes a heading; a bold-only line requires strong
-spacing on both sides. Conservative size ratios map detected headings to
-levels 1 through 3, while ordinary emphasized lines remain paragraph text.
+spacing on both sides. Numbered headings use their section-number depth for a
+consistent level from 1 through 6; other headings use conservative size ratios
+for levels 1 through 3. Decorative-only lines and lines with large internal
+gaps characteristic of document-control metadata are not promoted. Ordinary
+emphasized lines remain paragraph text. A nearby, style-matched line following
+a numbered heading is joined as a wrapped title continuation.
 
 List inference recognizes common ASCII and Unicode unordered markers and
 decimal ordered markers followed by whitespace. Adjacent marker-aligned items

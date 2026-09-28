@@ -399,6 +399,176 @@ func TestBasicAnalyzerDetectsSeparatedBoldHeading(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzerDerivesNumberedHeadingHierarchy(t *testing.T) {
+	t.Parallel()
+
+	heading := func(text string, top float64) document.TextRun {
+		run := textRun(text, 10, top, 190, top+10)
+		run.Style = document.TextStyle{FontSize: 10, FontWeight: 700}
+		return run
+	}
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 500,
+				TextRuns: []document.TextRun{
+					heading("7. Section", 10),
+					textRun("Section body.", 10, 38, 100, 48),
+					textRun("Section continues.", 10, 52, 120, 62),
+					textRun("Section ends.", 10, 66, 100, 76),
+					heading("7.2. Subsection", 104),
+					textRun("Subsection body.", 10, 132, 120, 142),
+					textRun("Subsection continues.", 10, 146, 140, 156),
+					textRun("Subsection ends.", 10, 160, 110, 170),
+					heading("7.2.1. Test case", 198),
+					textRun("Test case body.", 10, 226, 120, 236),
+					textRun("Test case continues.", 10, 240, 140, 250),
+					textRun("Test case ends.", 10, 254, 110, 264),
+					heading("7.2.1.1. Purpose", 292),
+					textRun("Purpose body.", 10, 320, 110, 330),
+					textRun("Purpose continues.", 10, 334, 130, 344),
+					textRun("Purpose ends.", 10, 348, 100, 358),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+
+	var got []int
+	for _, block := range result.Blocks {
+		if heading, ok := block.(*document.Heading); ok {
+			got = append(got, heading.Level)
+		}
+	}
+	if want := []int{1, 2, 3, 4}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("heading levels = %#v, want %#v", got, want)
+	}
+}
+
+func TestBasicAnalyzerJoinsWrappedNumberedHeading(t *testing.T) {
+	t.Parallel()
+
+	first := textRun(
+		"7.9.1. Correct ExecutablePath Resolution with Multiple",
+		10,
+		10,
+		190,
+		20,
+	)
+	first.Style = document.TextStyle{FontSize: 12, FontWeight: 700}
+	second := textRun("Installed Versions", 10, 24, 110, 34)
+	second.Style = first.Style
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					first,
+					second,
+					textRun("The body begins here.", 10, 52, 150, 62),
+					textRun("It continues here.", 10, 66, 120, 76),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got, want := len(result.Blocks), 2; got != want {
+		t.Fatalf("block count = %d, want %d", got, want)
+	}
+	heading, ok := result.Blocks[0].(*document.Heading)
+	if !ok {
+		t.Fatalf("block 1 has type %T, want *document.Heading", result.Blocks[0])
+	}
+	if got, want := heading.Level, 3; got != want {
+		t.Fatalf("heading level = %d, want %d", got, want)
+	}
+	if got, want := heading.Text,
+		"7.9.1. Correct ExecutablePath Resolution with Multiple Installed Versions"; got != want {
+		t.Fatalf("heading text = %q, want %q", got, want)
+	}
+}
+
+func TestBasicAnalyzerExcludesDecorativeAndMetadataHeadings(t *testing.T) {
+	t.Parallel()
+
+	decorative := textRun("\u2014", 10, 10, 30, 30)
+	decorative.Style = document.TextStyle{FontSize: 24, FontWeight: 700}
+	label := textRun("Prepared", 10, 58, 60, 68)
+	label.Style = document.TextStyle{FontSize: 10, FontWeight: 700}
+	value := textRun("Status", 150, 58, 190, 68)
+	value.Style = document.TextStyle{FontSize: 10, FontWeight: 700}
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					decorative,
+					textRun("Document body.", 10, 34, 100, 44),
+					label,
+					value,
+					textRun("More body text.", 10, 82, 120, 92),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	for index, block := range result.Blocks {
+		if heading, ok := block.(*document.Heading); ok {
+			t.Fatalf("block %d unexpectedly promoted to heading: %+v", index+1, heading)
+		}
+	}
+}
+
+func TestBasicAnalyzerDoesNotPromoteDottedContentsEntry(t *testing.T) {
+	t.Parallel()
+
+	entry := textRun("1. Introduction ........ 3", 10, 52, 190, 62)
+	entry.Style = document.TextStyle{FontSize: 10, FontWeight: 700}
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("Contents", 10, 10, 90, 20),
+					entry,
+					textRun("Following text.", 10, 94, 110, 104),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	for index, block := range result.Blocks {
+		if heading, ok := block.(*document.Heading); ok &&
+			heading.Text == entry.Text {
+			t.Fatalf("block %d unexpectedly promoted contents entry: %+v", index+1, heading)
+		}
+	}
+}
+
 func TestBasicAnalyzerDoesNotPromoteOnlyLineToHeading(t *testing.T) {
 	t.Parallel()
 
