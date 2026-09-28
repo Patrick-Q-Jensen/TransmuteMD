@@ -180,7 +180,10 @@ also retain names supplied by an engine. Annotations are associated with text
 runs whose centers fall within an unambiguous annotation rectangle. Analysis
 carries the resulting UTF-8 byte ranges into paragraphs, headings, and list
 items. Overlapping annotations with different targets remain plain text rather
-than guessing.
+than guessing. Internal links are matched to headings on their target page by
+normalized visible labels. Matched headings receive deterministic,
+document-unique anchors derived from heading text; unmatched targets remain
+typed but degrade to unlinked visible text.
 
 ### Tables and code-like text
 
@@ -213,13 +216,14 @@ separates paragraphs with one blank line, and terminates non-empty output with
 LF. Cancellation, short writes, and writer failures are returned with block
 context; transactional publication remains the application's responsibility.
 Detected headings render as escaped ATX headings followed by the same
-single-blank-line block separation used for paragraphs. Flat semantic lists
-render with `-` markers or preserved decimal starting numbers. Item text is
-escaped as plain text, and explicit item line breaks receive Markdown
-continuation indentation.
+single-blank-line block separation used for paragraphs. Referenced headings
+receive an explicit HTML anchor immediately before the ATX heading. Semantic
+lists render recursively with `-` markers or preserved decimal starting
+numbers. Item text is escaped as plain text, and explicit item line breaks
+receive Markdown continuation indentation.
 Validated external semantic links render as Markdown links with escaped labels
-and destinations. Internal targets remain typed semantic links while stable
-anchor association is resolved; unmatched targets retain visible label text.
+and destinations. Internal links render only when their named target matches
+an emitted anchor; unmatched page or named targets retain visible label text.
 
 ## 6. Package boundaries
 

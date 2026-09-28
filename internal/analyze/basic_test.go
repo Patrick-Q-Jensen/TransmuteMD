@@ -625,6 +625,67 @@ func TestBasicAnalyzerBuildsNestedContentsList(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzerAssociatesContentsLinkWithHeadingAnchor(t *testing.T) {
+	t.Parallel()
+
+	contents := textRun("Contents", 10, 10, 100, 30)
+	contents.Style = document.TextStyle{FontSize: 24, FontWeight: 700}
+	results := textRun("2. Results", 10, 10, 120, 30)
+	results.Style = document.TextStyle{FontSize: 24, FontWeight: 700}
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					contents,
+					textRun("2. Results ........ 2", 10, 44, 190, 54),
+				},
+				Links: []document.LinkAnnotation{
+					{
+						Bounds: document.Rectangle{Left: 8, Top: 42, Right: 192, Bottom: 56},
+						Target: document.LinkTarget{
+							Kind: document.LinkTargetPage,
+							Page: 2,
+						},
+					},
+				},
+			},
+			{
+				Number: 2,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					results,
+					textRun("The results are recorded here.", 10, 44, 180, 54),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	list := result.Blocks[1].(*document.List)
+	wantLink := document.TextLink{
+		Start: 0,
+		End:   len("2. Results"),
+		Target: document.LinkTarget{
+			Kind: document.LinkTargetNamed,
+			Name: "2-results",
+		},
+	}
+	if got := list.Items[0].Links; !reflect.DeepEqual(got, []document.TextLink{wantLink}) {
+		t.Fatalf("contents links = %#v, want %#v", got, []document.TextLink{wantLink})
+	}
+	heading := result.Blocks[2].(*document.Heading)
+	if got, want := heading.Anchor, "2-results"; got != want {
+		t.Fatalf("heading anchor = %q, want %q", got, want)
+	}
+}
+
 func TestBasicAnalyzerDoesNotPromoteOnlyLineToHeading(t *testing.T) {
 	t.Parallel()
 
@@ -1007,6 +1068,49 @@ func TestBasicAnalyzerMapsInternalPageLink(t *testing.T) {
 	want := []document.TextLink{{Start: 0, End: 8, Target: target}}
 	if !reflect.DeepEqual(paragraph.Links, want) {
 		t.Fatalf("paragraph links = %#v, want %#v", paragraph.Links, want)
+	}
+}
+
+func TestBasicAnalyzerAssociatesNamedLinkWithHeadingAnchor(t *testing.T) {
+	t.Parallel()
+
+	headingRun := textRun("2. Results", 10, 10, 120, 30)
+	headingRun.Style = document.TextStyle{FontSize: 24, FontWeight: 700}
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					headingRun,
+					textRun("jump", 10, 44, 50, 54),
+				},
+				Links: []document.LinkAnnotation{
+					{
+						Bounds: document.Rectangle{Left: 8, Top: 42, Right: 52, Bottom: 56},
+						Target: document.LinkTarget{
+							Kind: document.LinkTargetNamed,
+							Name: "2-results",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	heading := result.Blocks[0].(*document.Heading)
+	if got, want := heading.Anchor, "2-results"; got != want {
+		t.Fatalf("heading anchor = %q, want %q", got, want)
+	}
+	paragraph := result.Blocks[1].(*document.Paragraph)
+	want := document.LinkTarget{Kind: document.LinkTargetNamed, Name: "2-results"}
+	if got := paragraph.Links[0].Target; got != want {
+		t.Fatalf("link target = %+v, want %+v", got, want)
 	}
 }
 

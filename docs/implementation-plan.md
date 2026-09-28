@@ -220,7 +220,7 @@ semantic models established by earlier work.
 
 - [x] Extend engine-neutral links to represent internal page and named
       destinations.
-- [ ] Associate internal destinations with contents labels and emit stable
+- [x] Associate internal destinations with contents labels and emit stable
       Markdown anchors where possible.
 - [ ] Aggregate repeated unsupported-link diagnostics by page and category.
 
@@ -343,3 +343,4 @@ A task is complete when:
 | 2026-09-28 | Recognized contents entries from section numbering, indentation, dotted leaders, and trailing page numbers. |
 | 2026-09-28 | Added recursive semantic lists and rendered recognized contents as an indented Markdown hierarchy without leader dots. |
 | 2026-09-28 | Added typed external, page, and named link targets and resolved PDF GoTo destinations inside the PDFium adapter. |
+| 2026-09-28 | Accepted ADR-0006, matched internal links to destination headings, and emitted deterministic Markdown anchors for resolved navigation. |

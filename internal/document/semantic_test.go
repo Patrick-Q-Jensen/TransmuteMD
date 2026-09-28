@@ -65,6 +65,7 @@ func TestDocumentValidateRejectsInvalidHeading(t *testing.T) {
 		{Level: 7, Text: "Title"},
 		{Level: 1},
 		{Level: 1, Text: "Two\nlines"},
+		{Level: 1, Text: "Title", Anchor: "bad anchor"},
 	}
 
 	for _, heading := range tests {
@@ -74,6 +75,20 @@ func TestDocumentValidateRejectsInvalidHeading(t *testing.T) {
 		if err := doc.Validate(); err == nil {
 			t.Fatalf("Validate() returned nil for invalid heading %+v", heading)
 		}
+	}
+}
+
+func TestDocumentValidateRejectsDuplicateHeadingAnchor(t *testing.T) {
+	t.Parallel()
+
+	doc := document.Document{
+		Blocks: []document.Block{
+			&document.Heading{Level: 1, Text: "First", Anchor: "section"},
+			&document.Heading{Level: 1, Text: "Second", Anchor: "section"},
+		},
+	}
+	if err := doc.Validate(); err == nil {
+		t.Fatal("Validate() returned nil for duplicate heading anchors")
 	}
 }
 

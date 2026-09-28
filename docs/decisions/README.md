@@ -13,6 +13,7 @@ were made. They complement the current-state description in
 | [0003](0003-separate-extraction-analysis-and-rendering.md) | Separate extraction, semantic analysis, and rendering | Accepted |
 | [0004](0004-target-windows-linux-and-macos.md) | Target Windows, Linux, and macOS | Accepted |
 | [0005](0005-preserve-ambiguous-tables-and-code-as-text.md) | Preserve ambiguous tables and code as text | Accepted |
+| [0006](0006-emit-explicit-heading-anchors.md) | Emit explicit heading anchors for resolved internal links | Accepted |
 
 ## Process
 

@@ -48,6 +48,11 @@ func NewBasicAnalyzer() *BasicAnalyzer {
 	return &BasicAnalyzer{}
 }
 
+type blockRange struct {
+	start int
+	end   int
+}
+
 // Analyze orders physical text and groups lines into semantic blocks.
 func (*BasicAnalyzer) Analyze(
 	ctx context.Context,
@@ -85,7 +90,9 @@ func (*BasicAnalyzer) Analyze(
 
 	result := &document.Document{}
 	result.Diagnostics = slices.Clone(layout.Diagnostics)
+	pageBlocks := make([]blockRange, len(pages))
 	for _, page := range pages {
+		start := len(result.Blocks)
 		result.Diagnostics = append(result.Diagnostics, page.diagnostics...)
 		result.Diagnostics = append(
 			result.Diagnostics,
@@ -96,6 +103,13 @@ func (*BasicAnalyzer) Analyze(
 			return nil, fmt.Errorf("analyze page %d: %w", page.page.Number, err)
 		}
 		result.Blocks = append(result.Blocks, blocks...)
+		pageBlocks[page.page.Number-1] = blockRange{
+			start: start,
+			end:   len(result.Blocks),
+		}
+	}
+	if err := associateInternalNavigation(result, pageBlocks); err != nil {
+		return nil, fmt.Errorf("associate internal navigation: %w", err)
 	}
 
 	if err := result.Validate(); err != nil {
@@ -134,6 +148,23 @@ type detectedContentsEntry struct {
 	page      int
 	depth     int
 	lineCount int
+	target    document.LinkTarget
+}
+
+func contentsEntryTarget(lines []textLine) document.LinkTarget {
+	var target document.LinkTarget
+	for _, line := range lines {
+		for _, link := range line.links {
+			if link.Target.Kind == 0 {
+				continue
+			}
+			if target.Kind != 0 && target != link.Target {
+				return document.LinkTarget{}
+			}
+			target = link.Target
+		}
+	}
+	return target
 }
 
 func analyzePageLines(
@@ -900,9 +931,7 @@ func buildContentsItems(
 		}
 		if entry.depth > depth {
 			if len(items) == 0 {
-				items = append(items, document.ListItem{
-					Text: entry.number + " " + entry.title,
-				})
+				items = append(items, contentsListItem(entry))
 				index++
 				continue
 			}
@@ -915,12 +944,193 @@ func buildContentsItems(
 			index = next
 			continue
 		}
-		items = append(items, document.ListItem{
-			Text: entry.number + " " + entry.title,
-		})
+		items = append(items, contentsListItem(entry))
 		index++
 	}
 	return items, index
+}
+
+func contentsListItem(entry detectedContentsEntry) document.ListItem {
+	item := document.ListItem{Text: entry.number + " " + entry.title}
+	if entry.target.Kind != 0 {
+		item.Links = []document.TextLink{
+			{
+				Start:  0,
+				End:    len(item.Text),
+				Target: entry.target,
+			},
+		}
+	}
+	return item
+}
+
+func associateInternalNavigation(
+	doc *document.Document,
+	pageBlocks []blockRange,
+) error {
+	headingAnchors := allocateHeadingAnchors(doc.Blocks)
+	return visitBlockLinks(doc.Blocks, func(text string, link *document.TextLink) {
+		heading := linkedHeading(text, *link, doc.Blocks, pageBlocks)
+		if heading == nil {
+			return
+		}
+		anchor := headingAnchors[heading]
+		heading.Anchor = anchor
+		link.Target = document.LinkTarget{
+			Kind: document.LinkTargetNamed,
+			Name: anchor,
+		}
+	})
+}
+
+func allocateHeadingAnchors(
+	blocks []document.Block,
+) map[*document.Heading]string {
+	result := make(map[*document.Heading]string)
+	counts := make(map[string]int)
+	for _, block := range blocks {
+		heading, ok := block.(*document.Heading)
+		if !ok {
+			continue
+		}
+		base := headingAnchor(heading.Text)
+		counts[base]++
+		anchor := base
+		if counts[base] > 1 {
+			anchor += "-" + strconv.Itoa(counts[base])
+		}
+		result[heading] = anchor
+	}
+	return result
+}
+
+func headingAnchor(text string) string {
+	var result strings.Builder
+	pendingHyphen := false
+	for _, value := range strings.ToLower(text) {
+		if unicode.IsLetter(value) || unicode.IsDigit(value) {
+			if pendingHyphen && result.Len() > 0 {
+				result.WriteByte('-')
+			}
+			result.WriteRune(value)
+			pendingHyphen = false
+			continue
+		}
+		pendingHyphen = result.Len() > 0
+	}
+	if result.Len() == 0 {
+		return "section"
+	}
+	return result.String()
+}
+
+func visitBlockLinks(
+	blocks []document.Block,
+	visit func(string, *document.TextLink),
+) error {
+	for _, block := range blocks {
+		switch typed := block.(type) {
+		case *document.Paragraph:
+			visitTextLinks(typed.Text, typed.Links, visit)
+		case *document.Heading:
+			visitTextLinks(typed.Text, typed.Links, visit)
+		case *document.List:
+			visitListLinks(typed, visit)
+		default:
+			return fmt.Errorf("unsupported block type %T", block)
+		}
+	}
+	return nil
+}
+
+func visitListLinks(
+	list *document.List,
+	visit func(string, *document.TextLink),
+) {
+	for itemIndex := range list.Items {
+		item := &list.Items[itemIndex]
+		visitTextLinks(item.Text, item.Links, visit)
+		for childIndex := range item.Children {
+			visitListLinks(&item.Children[childIndex], visit)
+		}
+	}
+}
+
+func visitTextLinks(
+	text string,
+	links []document.TextLink,
+	visit func(string, *document.TextLink),
+) {
+	for index := range links {
+		visit(text, &links[index])
+	}
+}
+
+func linkedHeading(
+	text string,
+	link document.TextLink,
+	blocks []document.Block,
+	pageBlocks []blockRange,
+) *document.Heading {
+	label := normalizeNavigationLabel(text[link.Start:link.End])
+	switch link.Target.Kind {
+	case document.LinkTargetPage:
+		page := link.Target.Page
+		if page < 1 || page > len(pageBlocks) {
+			return nil
+		}
+		scope := pageBlocks[page-1]
+		return matchingHeading(label, blocks[scope.start:scope.end])
+	case document.LinkTargetNamed:
+		return matchingNamedHeading(link.Target.Name, blocks)
+	default:
+		return nil
+	}
+}
+
+func matchingNamedHeading(
+	name string,
+	blocks []document.Block,
+) *document.Heading {
+	normalized := normalizeNavigationLabel(name)
+	for _, block := range blocks {
+		heading, ok := block.(*document.Heading)
+		if !ok {
+			continue
+		}
+		if headingAnchor(heading.Text) == name ||
+			normalizeNavigationLabel(heading.Text) == normalized {
+			return heading
+		}
+	}
+	return nil
+}
+
+func matchingHeading(
+	label string,
+	blocks []document.Block,
+) *document.Heading {
+	var only *document.Heading
+	count := 0
+	for _, block := range blocks {
+		heading, ok := block.(*document.Heading)
+		if !ok {
+			continue
+		}
+		count++
+		only = heading
+		if normalizeNavigationLabel(heading.Text) == label {
+			return heading
+		}
+	}
+	if count == 1 {
+		return only
+	}
+	return nil
+}
+
+func normalizeNavigationLabel(text string) string {
+	return strings.ToLower(strings.Join(strings.Fields(text), " "))
 }
 
 func isNumberedHeadingContinuation(
@@ -1240,6 +1450,7 @@ func detectContentsEntries(lines []textLine) []*detectedContentsEntry {
 		if !ok {
 			continue
 		}
+		entry.target = contentsEntryTarget(lines[index : index+entry.lineCount])
 		entries[index] = &entry
 		if entry.depth == 1 {
 			rootLeft = math.Min(rootLeft, lines[index].left)

@@ -12,10 +12,12 @@ can identify a specific non-fatal fallback.
 - Page rotation and character-level position, font, weight, italic, and
   rotation evidence exposed by PDFium.
 - Paragraphs and font/spacing-based headings.
-- Flat ordered and unordered lists.
+- Flat body lists and hierarchical contents lists.
 - Clear two-column regions separated by a center gutter.
 - Repeated page headers and footers when repetition is sufficiently strong.
 - Reliable external `http`, `https`, and `mailto` link annotations.
+- Internal links that can be matched to a semantic heading on their target
+  page.
 
 These are heuristic conversions, not round-trip reproduction of the PDF.
 
@@ -28,9 +30,9 @@ These are heuristic conversions, not round-trip reproduction of the PDF.
 | Images, vector graphics, and page backgrounds | Visual content is omitted. Extractable text on the same page is still converted. |
 | Tables | No table model is inferred. Text is preserved in geometric reading order; strongly table-like regions produce a warning. |
 | Source code | No fenced-code model is inferred. Text is emitted as escaped plain Markdown; strongly code-like regions produce a warning. |
-| Nested or interrupted lists | Only flat lists are modeled. Indentation changes or uncertain sequences become separate lists or paragraphs without a warning. |
+| Nested or interrupted body lists | Nested contents entries are modeled. Other indentation changes or uncertain body-list sequences become separate lists or paragraphs without a warning. |
 | Ambiguous, overlapping, or three-or-more-column layouts | Only clear two-column regions are reordered. Other layouts retain conservative geometric order and may read incorrectly without a warning. |
-| Internal links, file-launch actions, JavaScript actions, and unsafe URI schemes | Link semantics are omitted and visible label text is retained. Recognized unsupported link annotations produce a warning. |
+| Unmatched internal links, remote-document links, file-launch actions, JavaScript actions, and unsafe URI schemes | Visible label text is retained. Unsupported actions and unsafe URIs produce a warning; valid internal targets without a matching semantic heading remain plain text. |
 | Form fields, comments, non-link annotations, signatures, attachments, bookmarks, metadata, and accessibility tags | Their semantics are not exported. Text visible through ordinary page text extraction may remain, but interactive or document-level data is omitted without a warning. |
 | Vertical writing, right-to-left text, and complex scripts | PDFium-decoded characters are retained, but analysis is optimized for horizontal left-to-right text. Reading order and joining are best effort and may be incorrect without a warning. |
 | Missing or incorrect font character maps | Extraction depends on PDFium's decoded Unicode. Unmappable characters may be missing or incorrect; TransmuteMD does not reconstruct fonts or run OCR. |

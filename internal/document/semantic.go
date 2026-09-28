@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -20,12 +21,19 @@ type Document struct {
 
 // Validate checks the semantic document invariants required by renderers.
 func (d Document) Validate() error {
+	anchors := make(map[string]struct{})
 	for i, block := range d.Blocks {
 		if block == nil {
 			return fmt.Errorf("block %d: must not be nil", i+1)
 		}
 		if err := block.validate(); err != nil {
 			return fmt.Errorf("block %d: %w", i+1, err)
+		}
+		if heading, ok := block.(*Heading); ok && heading.Anchor != "" {
+			if _, duplicate := anchors[heading.Anchor]; duplicate {
+				return fmt.Errorf("block %d: heading anchor %q must be unique", i+1, heading.Anchor)
+			}
+			anchors[heading.Anchor] = struct{}{}
 		}
 	}
 	return validateDiagnostics(d.Diagnostics)
@@ -58,9 +66,10 @@ func (p *Paragraph) validate() error {
 
 // Heading is a section title with a Markdown-compatible level from 1 to 6.
 type Heading struct {
-	Level int
-	Text  string
-	Links []TextLink
+	Level  int
+	Text   string
+	Links  []TextLink
+	Anchor string
 }
 
 func (*Heading) isBlock() {}
@@ -78,7 +87,19 @@ func (h *Heading) validate() error {
 	if strings.ContainsAny(h.Text, "\r\n") {
 		return errors.New("heading text must be a single line")
 	}
+	if h.Anchor != "" && !isValidAnchor(h.Anchor) {
+		return errors.New("heading anchor must contain only letters, digits, and hyphens")
+	}
 	return validateTextLinks(h.Text, h.Links)
+}
+
+func isValidAnchor(anchor string) bool {
+	for _, value := range anchor {
+		if value != '-' && !unicode.IsLetter(value) && !unicode.IsDigit(value) {
+			return false
+		}
+	}
+	return anchor != ""
 }
 
 // ListKind identifies the semantic ordering of a list.

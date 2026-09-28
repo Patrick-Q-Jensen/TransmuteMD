@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"strings"
 	"unicode/utf8"
@@ -48,9 +49,10 @@ func (*Renderer) Render(
 	if err := validateBlocks(ctx, doc); err != nil {
 		return err
 	}
+	anchors := documentAnchors(doc)
 
 	for index, block := range doc.Blocks {
-		rendered, err := renderBlock(ctx, block)
+		rendered, err := renderBlock(ctx, block, anchors)
 		if err != nil {
 			return fmt.Errorf("render block %d: %w", index+1, err)
 		}
@@ -65,6 +67,16 @@ func (*Renderer) Render(
 		}
 	}
 	return nil
+}
+
+func documentAnchors(doc *document.Document) map[string]struct{} {
+	anchors := make(map[string]struct{})
+	for _, block := range doc.Blocks {
+		if heading, ok := block.(*document.Heading); ok && heading.Anchor != "" {
+			anchors[heading.Anchor] = struct{}{}
+		}
+	}
+	return anchors
 }
 
 func validateBlocks(ctx context.Context, doc *document.Document) error {
@@ -119,31 +131,45 @@ func validateListText(list *document.List) error {
 	return nil
 }
 
-func renderBlock(ctx context.Context, block document.Block) (string, error) {
+func renderBlock(
+	ctx context.Context,
+	block document.Block,
+	anchors map[string]struct{},
+) (string, error) {
 	switch typed := block.(type) {
 	case *document.Paragraph:
-		return renderLinkedText(ctx, typed.Text, typed.Links)
+		return renderLinkedText(ctx, typed.Text, typed.Links, anchors)
 	case *document.Heading:
-		content, err := renderLinkedText(ctx, typed.Text, typed.Links)
+		content, err := renderLinkedText(ctx, typed.Text, typed.Links, anchors)
 		if err != nil {
 			return "", err
 		}
-		return strings.Repeat("#", typed.Level) + " " + content, nil
+		heading := strings.Repeat("#", typed.Level) + " " + content
+		if typed.Anchor != "" {
+			heading = `<a id="` + html.EscapeString(typed.Anchor) + `"></a>` +
+				"\n" + heading
+		}
+		return heading, nil
 	case *document.List:
-		return renderList(ctx, typed)
+		return renderList(ctx, typed, anchors)
 	default:
 		return "", fmt.Errorf("unsupported block type %T", block)
 	}
 }
 
-func renderList(ctx context.Context, list *document.List) (string, error) {
-	return renderListIndented(ctx, list, "")
+func renderList(
+	ctx context.Context,
+	list *document.List,
+	anchors map[string]struct{},
+) (string, error) {
+	return renderListIndented(ctx, list, "", anchors)
 }
 
 func renderListIndented(
 	ctx context.Context,
 	list *document.List,
 	indent string,
+	anchors map[string]struct{},
 ) (string, error) {
 	var result strings.Builder
 	for index, item := range list.Items {
@@ -163,6 +189,7 @@ func renderListIndented(
 			ctx,
 			item.Text,
 			item.Links,
+			anchors,
 		)
 		if err != nil {
 			return "", fmt.Errorf("render list item %d: %w", index+1, err)
@@ -177,6 +204,7 @@ func renderListIndented(
 				ctx,
 				&item.Children[childIndex],
 				childIndent,
+				anchors,
 			)
 			if err != nil {
 				return "", fmt.Errorf(
@@ -197,6 +225,7 @@ func renderLinkedText(
 	ctx context.Context,
 	text string,
 	links []document.TextLink,
+	anchors map[string]struct{},
 ) (string, error) {
 	if len(links) == 0 {
 		return escapeParagraph(ctx, normalizeLineEndings(text))
@@ -220,7 +249,16 @@ func renderLinkedText(
 			return "", err
 		}
 		result.WriteString(before)
-		if link.Target.Kind != document.LinkTargetExternal {
+		destination := ""
+		switch link.Target.Kind {
+		case document.LinkTargetExternal:
+			destination = link.Target.URI
+		case document.LinkTargetNamed:
+			if _, ok := anchors[link.Target.Name]; ok {
+				destination = "#" + link.Target.Name
+			}
+		}
+		if destination == "" {
 			result.WriteString(label)
 			start = link.End
 			continue
@@ -228,7 +266,7 @@ func renderLinkedText(
 		result.WriteByte('[')
 		result.WriteString(label)
 		result.WriteString("](")
-		result.WriteString(escapeLinkDestination(link.Target.URI))
+		result.WriteString(escapeLinkDestination(destination))
 		result.WriteByte(')')
 		start = link.End
 	}

@@ -141,6 +141,59 @@ func TestRendererWritesSemanticLinks(t *testing.T) {
 	}
 }
 
+func TestRendererWritesResolvedInternalLinkAndAnchor(t *testing.T) {
+	t.Parallel()
+
+	doc := &document.Document{
+		Blocks: []document.Block{
+			&document.Heading{
+				Level:  2,
+				Text:   "2. Results",
+				Anchor: "2-results",
+			},
+			&document.Paragraph{
+				Text: "See 2. Results.",
+				Links: []document.TextLink{
+					{
+						Start: 4,
+						End:   14,
+						Target: document.LinkTarget{
+							Kind: document.LinkTargetNamed,
+							Name: "2-results",
+						},
+					},
+				},
+			},
+			&document.Paragraph{
+				Text: "Unresolved page target.",
+				Links: []document.TextLink{
+					{
+						Start: 0,
+						End:   10,
+						Target: document.LinkTarget{
+							Kind: document.LinkTargetPage,
+							Page: 3,
+						},
+					},
+				},
+			},
+		},
+	}
+	var output bytes.Buffer
+
+	err := markdown.NewRenderer().Render(context.Background(), doc, &output)
+	if err != nil {
+		t.Fatalf("Render() returned an unexpected error: %v", err)
+	}
+	want := "<a id=\"2-results\"></a>\n" +
+		"## 2\\. Results\n\n" +
+		"See [2\\. Results](#2-results).\n\n" +
+		"Unresolved page target.\n"
+	if got := output.String(); got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
 func TestRendererEscapesMarkdownAndNormalizesLineEndings(t *testing.T) {
 	t.Parallel()
 
