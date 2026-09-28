@@ -37,12 +37,46 @@ func TestLayoutValidate(t *testing.T) {
 						},
 					},
 				},
+				Rulings: []document.Ruling{
+					{
+						Start: document.Point{X: 72, Y: 100},
+						End:   document.Point{X: 150, Y: 100},
+						Width: 0.5,
+					},
+				},
 			},
 		},
 	}
 
 	if err := layout.Validate(); err != nil {
 		t.Fatalf("Validate() returned an unexpected error: %v", err)
+	}
+}
+
+func TestPageValidateRejectsInvalidRuling(t *testing.T) {
+	t.Parallel()
+
+	tests := []document.Ruling{
+		{},
+		{
+			Start: document.Point{X: 1, Y: 1},
+			End:   document.Point{X: 2, Y: 2},
+		},
+		{
+			Start: document.Point{X: 1, Y: 1},
+			End:   document.Point{X: 2, Y: 1},
+			Width: -1,
+		},
+	}
+	for _, ruling := range tests {
+		page := document.Page{
+			Width:   612,
+			Height:  792,
+			Rulings: []document.Ruling{ruling},
+		}
+		if err := page.Validate(); err == nil {
+			t.Fatalf("Validate() returned nil for invalid ruling %+v", ruling)
+		}
 	}
 }
 

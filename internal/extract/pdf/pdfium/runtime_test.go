@@ -92,6 +92,16 @@ type instanceStub struct {
 	request            *requests.OpenDocument
 	pageSizeRequest    *requests.FPDF_GetPageSizeByIndex
 	textRequest        *requests.GetPageTextStructured
+	pageObjects        []references.FPDF_PAGEOBJECT
+	pageObjectTypes    map[references.FPDF_PAGEOBJECT]enums.FPDF_PAGEOBJ
+	pageObjectMatrices map[references.FPDF_PAGEOBJECT]structs.FPDF_FS_MATRIX
+	pathStrokes        map[references.FPDF_PAGEOBJECT]bool
+	pathFillModes      map[references.FPDF_PAGEOBJECT]enums.FPDF_FILLMODE
+	pathSegments       map[references.FPDF_PAGEOBJECT][]references.FPDF_PATHSEGMENT
+	segmentTypes       map[references.FPDF_PATHSEGMENT]enums.FPDF_SEGMENT
+	segmentPoints      map[references.FPDF_PATHSEGMENT]structs.FPDF_FS_POINTF
+	segmentCloses      map[references.FPDF_PATHSEGMENT]bool
+	strokeWidths       map[references.FPDF_PAGEOBJECT]float32
 }
 
 func (i *instanceStub) OpenDocument(request *requests.OpenDocument) (*responses.OpenDocument, error) {
@@ -131,6 +141,105 @@ func (i *instanceStub) GetPageTextStructured(
 	i.log.add("get structured text")
 	i.textRequest = request
 	return i.structuredText, i.structuredErr
+}
+
+func (i *instanceStub) FPDFPage_CountObjects(
+	*requests.FPDFPage_CountObjects,
+) (*responses.FPDFPage_CountObjects, error) {
+	i.log.add("count page objects")
+	return &responses.FPDFPage_CountObjects{Count: len(i.pageObjects)}, nil
+}
+
+func (i *instanceStub) FPDFPage_GetObject(
+	request *requests.FPDFPage_GetObject,
+) (*responses.FPDFPage_GetObject, error) {
+	i.log.add("get page object")
+	if request.Index < 0 || request.Index >= len(i.pageObjects) {
+		return &responses.FPDFPage_GetObject{}, nil
+	}
+	return &responses.FPDFPage_GetObject{
+		PageObject: i.pageObjects[request.Index],
+	}, nil
+}
+
+func (i *instanceStub) FPDFPageObj_GetType(
+	request *requests.FPDFPageObj_GetType,
+) (*responses.FPDFPageObj_GetType, error) {
+	return &responses.FPDFPageObj_GetType{
+		Type: i.pageObjectTypes[request.PageObject],
+	}, nil
+}
+
+func (i *instanceStub) FPDFPageObj_GetMatrix(
+	request *requests.FPDFPageObj_GetMatrix,
+) (*responses.FPDFPageObj_GetMatrix, error) {
+	matrix, ok := i.pageObjectMatrices[request.PageObject]
+	if !ok {
+		matrix = structs.FPDF_FS_MATRIX{A: 1, D: 1}
+	}
+	return &responses.FPDFPageObj_GetMatrix{Matrix: matrix}, nil
+}
+
+func (i *instanceStub) FPDFPath_GetDrawMode(
+	request *requests.FPDFPath_GetDrawMode,
+) (*responses.FPDFPath_GetDrawMode, error) {
+	return &responses.FPDFPath_GetDrawMode{
+		FillMode: i.pathFillModes[request.PageObject],
+		Stroke:   i.pathStrokes[request.PageObject],
+	}, nil
+}
+
+func (i *instanceStub) FPDFPath_CountSegments(
+	request *requests.FPDFPath_CountSegments,
+) (*responses.FPDFPath_CountSegments, error) {
+	i.log.add("count path segments")
+	return &responses.FPDFPath_CountSegments{
+		Count: len(i.pathSegments[request.PageObject]),
+	}, nil
+}
+
+func (i *instanceStub) FPDFPath_GetPathSegment(
+	request *requests.FPDFPath_GetPathSegment,
+) (*responses.FPDFPath_GetPathSegment, error) {
+	i.log.add("get path segment")
+	segments := i.pathSegments[request.PageObject]
+	if request.Index < 0 || request.Index >= len(segments) {
+		return &responses.FPDFPath_GetPathSegment{}, nil
+	}
+	return &responses.FPDFPath_GetPathSegment{
+		PathSegment: segments[request.Index],
+	}, nil
+}
+
+func (i *instanceStub) FPDFPathSegment_GetType(
+	request *requests.FPDFPathSegment_GetType,
+) (*responses.FPDFPathSegment_GetType, error) {
+	return &responses.FPDFPathSegment_GetType{
+		Type: i.segmentTypes[request.PathSegment],
+	}, nil
+}
+
+func (i *instanceStub) FPDFPathSegment_GetPoint(
+	request *requests.FPDFPathSegment_GetPoint,
+) (*responses.FPDFPathSegment_GetPoint, error) {
+	point := i.segmentPoints[request.PathSegment]
+	return &responses.FPDFPathSegment_GetPoint{X: point.X, Y: point.Y}, nil
+}
+
+func (i *instanceStub) FPDFPathSegment_GetClose(
+	request *requests.FPDFPathSegment_GetClose,
+) (*responses.FPDFPathSegment_GetClose, error) {
+	return &responses.FPDFPathSegment_GetClose{
+		IsClose: i.segmentCloses[request.PathSegment],
+	}, nil
+}
+
+func (i *instanceStub) FPDFPageObj_GetStrokeWidth(
+	request *requests.FPDFPageObj_GetStrokeWidth,
+) (*responses.FPDFPageObj_GetStrokeWidth, error) {
+	return &responses.FPDFPageObj_GetStrokeWidth{
+		StrokeWidth: i.strokeWidths[request.PageObject],
+	}, nil
 }
 
 func (i *instanceStub) FPDFPage_GetAnnotCount(

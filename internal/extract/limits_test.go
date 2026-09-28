@@ -47,6 +47,24 @@ func TestLimitsValidateRejectsDisabledBoundary(t *testing.T) {
 			},
 		},
 		{
+			name: "page objects",
+			disable: func(limits *extract.Limits) {
+				limits.MaxPageObjects = 0
+			},
+		},
+		{
+			name: "path segments",
+			disable: func(limits *extract.Limits) {
+				limits.MaxPathSegments = 0
+			},
+		},
+		{
+			name: "rulings",
+			disable: func(limits *extract.Limits) {
+				limits.MaxRulings = 0
+			},
+		},
+		{
 			name: "page dimension",
 			disable: func(limits *extract.Limits) {
 				limits.MaxPageDimension = 0

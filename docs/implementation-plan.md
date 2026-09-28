@@ -228,7 +228,7 @@ semantic models established by earlier work.
 
 - [x] Supersede ADR-0005 with acceptance criteria for reliable table
       reconstruction and conservative fallback.
-- [ ] Add engine-neutral ruling-line or equivalent geometry evidence where
+- [x] Add engine-neutral ruling-line or equivalent geometry evidence where
       the backend exposes it.
 - [ ] Detect table regions, rows, columns, and cells from geometry and aligned
       text.
@@ -346,3 +346,4 @@ A task is complete when:
 | 2026-09-28 | Accepted ADR-0006, matched internal links to destination headings, and emitted deterministic Markdown anchors for resolved navigation. |
 | 2026-09-28 | Aggregated unsupported-link diagnostics by source page and omission category while preserving deterministic warning order and counts. |
 | 2026-09-28 | Accepted ADR-0007 with strict ruled-table acceptance criteria and conservative regional fallback. |
+| 2026-09-28 | Added bounded engine-neutral ruling geometry extracted from visible axis-aligned PDF path edges. |

@@ -147,6 +147,108 @@ func TestExtractorMapsPDFiumLayout(t *testing.T) {
 	}
 }
 
+func TestExtractPageRulingsMapsVisibleAxisAlignedSegments(t *testing.T) {
+	t.Parallel()
+
+	path := references.FPDF_PAGEOBJECT("path")
+	segments := []references.FPDF_PATHSEGMENT{
+		"move-horizontal",
+		"line-horizontal",
+		"move-vertical",
+		"line-vertical",
+		"line-diagonal",
+	}
+	worker := &instanceStub{
+		log:         &eventLog{},
+		pageObjects: []references.FPDF_PAGEOBJECT{path},
+		pageObjectTypes: map[references.FPDF_PAGEOBJECT]enums.FPDF_PAGEOBJ{
+			path: enums.FPDF_PAGEOBJ_PATH,
+		},
+		pathFillModes: map[references.FPDF_PAGEOBJECT]enums.FPDF_FILLMODE{
+			path: enums.FPDF_FILLMODE_WINDING,
+		},
+		pathSegments: map[references.FPDF_PAGEOBJECT][]references.FPDF_PATHSEGMENT{
+			path: segments,
+		},
+		segmentTypes: map[references.FPDF_PATHSEGMENT]enums.FPDF_SEGMENT{
+			segments[0]: enums.FPDF_SEGMENT_MOVETO,
+			segments[1]: enums.FPDF_SEGMENT_LINETO,
+			segments[2]: enums.FPDF_SEGMENT_MOVETO,
+			segments[3]: enums.FPDF_SEGMENT_LINETO,
+			segments[4]: enums.FPDF_SEGMENT_LINETO,
+		},
+		segmentPoints: map[references.FPDF_PATHSEGMENT]structs.FPDF_FS_POINTF{
+			segments[0]: {X: 10, Y: 20},
+			segments[1]: {X: 40, Y: 20},
+			segments[2]: {X: 50, Y: 10},
+			segments[3]: {X: 50, Y: 30},
+			segments[4]: {X: 60, Y: 40},
+		},
+		strokeWidths: map[references.FPDF_PAGEOBJECT]float32{path: 0.5},
+	}
+	counts := extractionCounts{}
+
+	got, err := extractPageRulings(
+		worker,
+		"document",
+		0,
+		100,
+		extract.DefaultLimits(),
+		&counts,
+	)
+	if err != nil {
+		t.Fatalf("extractPageRulings() returned an unexpected error: %v", err)
+	}
+	want := []document.Ruling{
+		{
+			Start: document.Point{X: 10, Y: 80},
+			End:   document.Point{X: 40, Y: 80},
+			Width: 0.5,
+		},
+		{
+			Start: document.Point{X: 50, Y: 70},
+			End:   document.Point{X: 50, Y: 90},
+			Width: 0.5,
+		},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("rulings = %#v, want %#v", got, want)
+	}
+	if counts.pageObjects != 1 || counts.pathSegments != 5 || counts.rulings != 2 {
+		t.Fatalf("extraction counts = %+v, want 1 object, 5 segments, 2 rulings", counts)
+	}
+}
+
+func TestAppendRulingEnforcesLimit(t *testing.T) {
+	t.Parallel()
+
+	limits := extract.DefaultLimits()
+	limits.MaxRulings = 1
+	counts := extractionCounts{}
+	rulings, err := appendRuling(
+		nil,
+		document.Point{X: 10, Y: 10},
+		document.Point{X: 20, Y: 10},
+		1,
+		limits,
+		&counts,
+	)
+	if err != nil {
+		t.Fatalf("appendRuling() returned an unexpected error: %v", err)
+	}
+	_, err = appendRuling(
+		rulings,
+		document.Point{X: 10, Y: 20},
+		document.Point{X: 20, Y: 20},
+		1,
+		limits,
+		&counts,
+	)
+	if !errors.Is(err, extract.ErrLimitExceeded) {
+		t.Fatalf("appendRuling() error = %v, want %v", err, extract.ErrLimitExceeded)
+	}
+}
+
 func TestExtractAnnotationLinkMapsInternalGoToPage(t *testing.T) {
 	t.Parallel()
 
@@ -573,6 +675,30 @@ func TestExtractorEnforcesPDFiumLimitsAtAvailableBoundaries(t *testing.T) {
 				limits.MaxAnnotations = 1
 			},
 			forbiddenEvent: "get annotation",
+		},
+		{
+			name: "cumulative page objects before enumeration",
+			configure: func(worker *instanceStub, limits *extract.Limits) {
+				worker.pageObjects = []references.FPDF_PAGEOBJECT{"one", "two"}
+				limits.MaxPageObjects = 1
+			},
+			forbiddenEvent: "get page object",
+		},
+		{
+			name: "cumulative path segments before enumeration",
+			configure: func(worker *instanceStub, limits *extract.Limits) {
+				path := references.FPDF_PAGEOBJECT("path")
+				worker.pageObjects = []references.FPDF_PAGEOBJECT{path}
+				worker.pageObjectTypes = map[references.FPDF_PAGEOBJECT]enums.FPDF_PAGEOBJ{
+					path: enums.FPDF_PAGEOBJ_PATH,
+				}
+				worker.pathStrokes = map[references.FPDF_PAGEOBJECT]bool{path: true}
+				worker.pathSegments = map[references.FPDF_PAGEOBJECT][]references.FPDF_PATHSEGMENT{
+					path: {"one", "two"},
+				}
+				limits.MaxPathSegments = 1
+			},
+			forbiddenEvent: "get path segment",
 		},
 	}
 

@@ -46,6 +46,7 @@ type Page struct {
 	Height   float64
 	TextRuns []TextRun
 	Links    []LinkAnnotation
+	Rulings  []Ruling
 }
 
 // Validate checks page dimensions and text runs.
@@ -65,6 +66,52 @@ func (p Page) Validate() error {
 		if err := link.Validate(); err != nil {
 			return fmt.Errorf("link %d: %w", i+1, err)
 		}
+	}
+	for i, ruling := range p.Rulings {
+		if err := ruling.Validate(); err != nil {
+			return fmt.Errorf("ruling %d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
+// Ruling is a visible horizontal or vertical path edge observed on a page.
+type Ruling struct {
+	Start Point
+	End   Point
+	Width float64
+}
+
+// Validate checks that a ruling is finite, axis-aligned, and non-empty.
+func (r Ruling) Validate() error {
+	if err := r.Start.Validate(); err != nil {
+		return fmt.Errorf("start: %w", err)
+	}
+	if err := r.End.Validate(); err != nil {
+		return fmt.Errorf("end: %w", err)
+	}
+	if !isFinite(r.Width) || r.Width < 0 {
+		return errors.New("width must be finite and non-negative")
+	}
+	if r.Start == r.End {
+		return errors.New("must have non-zero length")
+	}
+	if r.Start.X != r.End.X && r.Start.Y != r.End.Y {
+		return errors.New("must be horizontal or vertical")
+	}
+	return nil
+}
+
+// Point is a position in page coordinates with a top-left origin.
+type Point struct {
+	X float64
+	Y float64
+}
+
+// Validate checks that both coordinates are finite.
+func (p Point) Validate() error {
+	if !isFinite(p.X) || !isFinite(p.Y) {
+		return errors.New("coordinates must be finite")
 	}
 	return nil
 }

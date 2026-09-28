@@ -83,8 +83,9 @@ renderer construction.
 ### Extraction
 
 An extractor decodes a source into an engine-neutral layout model containing
-pages, positioned text, and relevant style information. The PDFium adapter
-owns all PDFium initialization, handles, response types, and cleanup.
+pages, positioned text, relevant style information, and visible axis-aligned
+ruling edges. The PDFium adapter owns all PDFium initialization, handles,
+response types, path traversal, coordinate transforms, and cleanup.
 
 Extraction does not decide whether text is a heading, paragraph, or list. It
 reports observed layout information and diagnostics. Reliable external link
@@ -188,19 +189,20 @@ typed but degrade to unlinked visible text.
 
 ### Tables and code-like text
 
-Phase 2 preserves table-like and code-like regions as ordinary text rather
-than assigning uncertain semantics. Table detection may use repeated row and
-column alignment for diagnostics, but a future semantic table requires a
-confident rectangular cell assignment; merged, multiline, or ambiguous cells
-fall back to text. The renderer does not fabricate Markdown delimiters or emit
-raw HTML.
+Engine-neutral page rulings preserve horizontal and vertical edges from
+visible PDF path objects without exposing PDFium types. Table analysis uses
+this evidence only when it establishes a rectangular cell assignment;
+ambiguous regions fall back to text. The renderer does not fabricate Markdown
+delimiters or emit raw HTML.
 
 A future semantic code block requires multiple adjacent lines with consistent
 monospaced-font, alignment, spacing, and indentation evidence. Its language is
 empty unless reliable source metadata becomes available. A single monospaced
 line does not qualify, and inline code inference is separate work. These
 constraints are recorded in
-[ADR-0005](decisions/0005-preserve-ambiguous-tables-and-code-as-text.md).
+[ADR-0005](decisions/0005-preserve-ambiguous-tables-and-code-as-text.md);
+ruled-table acceptance is governed by
+[ADR-0007](decisions/0007-reconstruct-reliable-ruled-tables.md).
 The initial analyzer reports table-like text only after three adjacent lines
 show multiple large intra-line gaps. It reports code-like text only after two
 aligned adjacent lines consistently use recognized monospaced font names.

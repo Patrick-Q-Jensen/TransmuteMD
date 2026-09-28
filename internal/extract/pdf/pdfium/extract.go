@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	engineName     = "pdfium-wasm"
-	fontFlagItalic = 1 << 6
+	engineName          = "pdfium-wasm"
+	fontFlagItalic      = 1 << 6
+	rulingAxisTolerance = 0.25
 )
 
 var (
@@ -27,6 +28,17 @@ var (
 	errNilPageCount      = errors.New("PDFium returned no page count")
 	errNilPageSize       = errors.New("PDFium returned no page size")
 	errNilStructuredText = errors.New("PDFium returned no structured text")
+	errNilObjectCount    = errors.New("PDFium returned no page object count")
+	errNilPageObject     = errors.New("PDFium returned no page object")
+	errNilPageObjectType = errors.New("PDFium returned no page object type")
+	errNilObjectMatrix   = errors.New("PDFium returned no page object matrix")
+	errNilPathDrawMode   = errors.New("PDFium returned no path draw mode")
+	errNilSegmentCount   = errors.New("PDFium returned no path segment count")
+	errNilPathSegment    = errors.New("PDFium returned no path segment")
+	errNilSegmentType    = errors.New("PDFium returned no path segment type")
+	errNilSegmentPoint   = errors.New("PDFium returned no path segment point")
+	errNilSegmentClose   = errors.New("PDFium returned no path segment close state")
+	errNilStrokeWidth    = errors.New("PDFium returned no path stroke width")
 	errNilCharacter      = errors.New("PDFium returned a nil text character")
 	errNilAnnotCount     = errors.New("PDFium returned no annotation count")
 	errNilAnnotation     = errors.New("PDFium returned no annotation")
@@ -158,8 +170,11 @@ func extractLayout(
 }
 
 type extractionCounts struct {
-	textRuns    int
-	annotations int
+	textRuns     int
+	annotations  int
+	pageObjects  int
+	pathSegments int
+	rulings      int
 }
 
 type linkOmission uint8
@@ -249,6 +264,18 @@ func extractPage(
 		}
 	}
 
+	rulings, err := extractPageRulings(
+		worker,
+		pdf,
+		index,
+		size.Height,
+		limits,
+		counts,
+	)
+	if err != nil {
+		return document.Page{}, nil, fmt.Errorf("extract rulings: %w", err)
+	}
+
 	links, diagnostics, err := extractPageLinks(
 		worker,
 		pdf,
@@ -267,7 +294,326 @@ func extractPage(
 		Height:   size.Height,
 		TextRuns: runs,
 		Links:    links,
+		Rulings:  rulings,
 	}, diagnostics, nil
+}
+
+type affineMatrix struct {
+	a float64
+	b float64
+	c float64
+	d float64
+	e float64
+	f float64
+}
+
+func extractPageRulings(
+	worker instance,
+	pdf references.FPDF_DOCUMENT,
+	index int,
+	pageHeight float64,
+	limits extract.Limits,
+	counts *extractionCounts,
+) ([]document.Ruling, error) {
+	page := requests.Page{ByIndex: &requests.PageByIndex{
+		Document: pdf,
+		Index:    index,
+	}}
+	response, err := worker.FPDFPage_CountObjects(&requests.FPDFPage_CountObjects{
+		Page: page,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("count page objects: %w", err)
+	}
+	if response == nil {
+		return nil, errNilObjectCount
+	}
+	if response.Count < 0 {
+		return nil, fmt.Errorf("page object count must not be negative: %d", response.Count)
+	}
+	if response.Count > limits.MaxPageObjects-counts.pageObjects {
+		return nil, extract.LimitError(
+			"page objects",
+			int64(counts.pageObjects+response.Count),
+			int64(limits.MaxPageObjects),
+		)
+	}
+	counts.pageObjects += response.Count
+
+	var rulings []document.Ruling
+	for objectIndex := range response.Count {
+		object, err := worker.FPDFPage_GetObject(&requests.FPDFPage_GetObject{
+			Page:  page,
+			Index: objectIndex,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("page object %d: get: %w", objectIndex+1, err)
+		}
+		if object == nil || object.PageObject == "" {
+			return nil, fmt.Errorf("page object %d: %w", objectIndex+1, errNilPageObject)
+		}
+		objectRulings, err := extractPathRulings(
+			worker,
+			object.PageObject,
+			pageHeight,
+			limits,
+			counts,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("page object %d: %w", objectIndex+1, err)
+		}
+		rulings = append(rulings, objectRulings...)
+	}
+	return rulings, nil
+}
+
+func extractPathRulings(
+	worker instance,
+	object references.FPDF_PAGEOBJECT,
+	pageHeight float64,
+	limits extract.Limits,
+	counts *extractionCounts,
+) ([]document.Ruling, error) {
+	objectType, err := worker.FPDFPageObj_GetType(&requests.FPDFPageObj_GetType{
+		PageObject: object,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get type: %w", err)
+	}
+	if objectType == nil {
+		return nil, errNilPageObjectType
+	}
+	if objectType.Type != enums.FPDF_PAGEOBJ_PATH {
+		return nil, nil
+	}
+
+	drawMode, err := worker.FPDFPath_GetDrawMode(&requests.FPDFPath_GetDrawMode{
+		PageObject: object,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get draw mode: %w", err)
+	}
+	if drawMode == nil {
+		return nil, errNilPathDrawMode
+	}
+	if !drawMode.Stroke && drawMode.FillMode == enums.FPDF_FILLMODE_NONE {
+		return nil, nil
+	}
+	matrixResponse, err := worker.FPDFPageObj_GetMatrix(&requests.FPDFPageObj_GetMatrix{
+		PageObject: object,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get matrix: %w", err)
+	}
+	if matrixResponse == nil {
+		return nil, errNilObjectMatrix
+	}
+	matrix := affineMatrix{
+		a: float64(matrixResponse.Matrix.A),
+		b: float64(matrixResponse.Matrix.B),
+		c: float64(matrixResponse.Matrix.C),
+		d: float64(matrixResponse.Matrix.D),
+		e: float64(matrixResponse.Matrix.E),
+		f: float64(matrixResponse.Matrix.F),
+	}
+
+	stroke, err := worker.FPDFPageObj_GetStrokeWidth(&requests.FPDFPageObj_GetStrokeWidth{
+		PageObject: object,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get stroke width: %w", err)
+	}
+	if stroke == nil {
+		return nil, errNilStrokeWidth
+	}
+
+	count, err := worker.FPDFPath_CountSegments(&requests.FPDFPath_CountSegments{
+		PageObject: object,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("count segments: %w", err)
+	}
+	if count == nil {
+		return nil, errNilSegmentCount
+	}
+	if count.Count < 0 {
+		return nil, fmt.Errorf("path segment count must not be negative: %d", count.Count)
+	}
+	if count.Count > limits.MaxPathSegments-counts.pathSegments {
+		return nil, extract.LimitError(
+			"path segments",
+			int64(counts.pathSegments+count.Count),
+			int64(limits.MaxPathSegments),
+		)
+	}
+	counts.pathSegments += count.Count
+
+	var (
+		rulings        []document.Ruling
+		previous       document.Point
+		subpathStart   document.Point
+		havePrevious   bool
+		haveSubpath    bool
+		transformedWid = transformedStrokeWidth(matrix, float64(stroke.StrokeWidth))
+	)
+	for segmentIndex := range count.Count {
+		segment, err := worker.FPDFPath_GetPathSegment(&requests.FPDFPath_GetPathSegment{
+			PageObject: object,
+			Index:      segmentIndex,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("segment %d: get: %w", segmentIndex+1, err)
+		}
+		if segment == nil || segment.PathSegment == "" {
+			return nil, fmt.Errorf("segment %d: %w", segmentIndex+1, errNilPathSegment)
+		}
+		segmentType, err := worker.FPDFPathSegment_GetType(
+			&requests.FPDFPathSegment_GetType{PathSegment: segment.PathSegment},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("segment %d: get type: %w", segmentIndex+1, err)
+		}
+		if segmentType == nil {
+			return nil, fmt.Errorf("segment %d: %w", segmentIndex+1, errNilSegmentType)
+		}
+		pointResponse, err := worker.FPDFPathSegment_GetPoint(
+			&requests.FPDFPathSegment_GetPoint{PathSegment: segment.PathSegment},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("segment %d: get point: %w", segmentIndex+1, err)
+		}
+		if pointResponse == nil {
+			return nil, fmt.Errorf("segment %d: %w", segmentIndex+1, errNilSegmentPoint)
+		}
+		point := transformPoint(
+			matrix,
+			float64(pointResponse.X),
+			float64(pointResponse.Y),
+			pageHeight,
+		)
+
+		switch segmentType.Type {
+		case enums.FPDF_SEGMENT_MOVETO:
+			previous = point
+			subpathStart = point
+			havePrevious = true
+			haveSubpath = true
+		case enums.FPDF_SEGMENT_LINETO:
+			if havePrevious {
+				rulings, err = appendRuling(
+					rulings,
+					previous,
+					point,
+					transformedWid,
+					limits,
+					counts,
+				)
+				if err != nil {
+					return nil, err
+				}
+			}
+			previous = point
+			havePrevious = true
+		default:
+			previous = point
+			havePrevious = true
+		}
+
+		closeResponse, err := worker.FPDFPathSegment_GetClose(
+			&requests.FPDFPathSegment_GetClose{PathSegment: segment.PathSegment},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("segment %d: get close state: %w", segmentIndex+1, err)
+		}
+		if closeResponse == nil {
+			return nil, fmt.Errorf("segment %d: %w", segmentIndex+1, errNilSegmentClose)
+		}
+		if closeResponse.IsClose && havePrevious && haveSubpath {
+			rulings, err = appendRuling(
+				rulings,
+				previous,
+				subpathStart,
+				transformedWid,
+				limits,
+				counts,
+			)
+			if err != nil {
+				return nil, err
+			}
+			previous = subpathStart
+		}
+	}
+	return rulings, nil
+}
+
+func appendRuling(
+	rulings []document.Ruling,
+	start document.Point,
+	end document.Point,
+	width float64,
+	limits extract.Limits,
+	counts *extractionCounts,
+) ([]document.Ruling, error) {
+	ruling, ok := normalizedRuling(start, end, width)
+	if !ok {
+		return rulings, nil
+	}
+	if counts.rulings >= limits.MaxRulings {
+		return nil, extract.LimitError(
+			"rulings",
+			int64(counts.rulings+1),
+			int64(limits.MaxRulings),
+		)
+	}
+	counts.rulings++
+	return append(rulings, ruling), nil
+}
+
+func normalizedRuling(
+	start document.Point,
+	end document.Point,
+	width float64,
+) (document.Ruling, bool) {
+	if math.Hypot(end.X-start.X, end.Y-start.Y) <= rulingAxisTolerance {
+		return document.Ruling{}, false
+	}
+	switch {
+	case math.Abs(start.Y-end.Y) <= rulingAxisTolerance:
+		y := (start.Y + end.Y) / 2
+		if start.X > end.X {
+			start, end = end, start
+		}
+		start.Y = y
+		end.Y = y
+	case math.Abs(start.X-end.X) <= rulingAxisTolerance:
+		x := (start.X + end.X) / 2
+		if start.Y > end.Y {
+			start, end = end, start
+		}
+		start.X = x
+		end.X = x
+	default:
+		return document.Ruling{}, false
+	}
+	return document.Ruling{Start: start, End: end, Width: width}, true
+}
+
+func transformPoint(
+	matrix affineMatrix,
+	x float64,
+	y float64,
+	pageHeight float64,
+) document.Point {
+	return document.Point{
+		X: matrix.a*x + matrix.c*y + matrix.e,
+		Y: pageHeight - (matrix.b*x + matrix.d*y + matrix.f),
+	}
+}
+
+func transformedStrokeWidth(matrix affineMatrix, width float64) float64 {
+	scaleX := math.Hypot(matrix.a, matrix.b)
+	scaleY := math.Hypot(matrix.c, matrix.d)
+	return math.Abs(width) * (scaleX + scaleY) / 2
 }
 
 func extractPageLinks(

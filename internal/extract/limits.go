@@ -10,6 +10,9 @@ const (
 	defaultMaxPages               = 2_000
 	defaultMaxTextRuns            = 1_000_000
 	defaultMaxAnnotations         = 100_000
+	defaultMaxPageObjects         = 1_000_000
+	defaultMaxPathSegments        = 2_000_000
+	defaultMaxRulings             = 1_000_000
 	defaultMaxPageDimension       = 200_000
 )
 
@@ -23,6 +26,9 @@ type Limits struct {
 	MaxPages         int
 	MaxTextRuns      int
 	MaxAnnotations   int
+	MaxPageObjects   int
+	MaxPathSegments  int
+	MaxRulings       int
 	MaxPageDimension int
 }
 
@@ -33,6 +39,9 @@ func DefaultLimits() Limits {
 		MaxPages:         defaultMaxPages,
 		MaxTextRuns:      defaultMaxTextRuns,
 		MaxAnnotations:   defaultMaxAnnotations,
+		MaxPageObjects:   defaultMaxPageObjects,
+		MaxPathSegments:  defaultMaxPathSegments,
+		MaxRulings:       defaultMaxRulings,
 		MaxPageDimension: defaultMaxPageDimension,
 	}
 }
@@ -50,6 +59,15 @@ func (limits Limits) Validate() error {
 	}
 	if limits.MaxAnnotations <= 0 {
 		return errors.New("maximum annotations must be greater than zero")
+	}
+	if limits.MaxPageObjects <= 0 {
+		return errors.New("maximum page objects must be greater than zero")
+	}
+	if limits.MaxPathSegments <= 0 {
+		return errors.New("maximum path segments must be greater than zero")
+	}
+	if limits.MaxRulings <= 0 {
+		return errors.New("maximum rulings must be greater than zero")
 	}
 	if limits.MaxPageDimension <= 0 {
 		return errors.New("maximum page dimension must be greater than zero")
