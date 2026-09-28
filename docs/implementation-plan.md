@@ -226,7 +226,7 @@ semantic models established by earlier work.
 
 ### Group 4: Table reconstruction
 
-- [ ] Supersede ADR-0005 with acceptance criteria for reliable table
+- [x] Supersede ADR-0005 with acceptance criteria for reliable table
       reconstruction and conservative fallback.
 - [ ] Add engine-neutral ruling-line or equivalent geometry evidence where
       the backend exposes it.
@@ -345,3 +345,4 @@ A task is complete when:
 | 2026-09-28 | Added typed external, page, and named link targets and resolved PDF GoTo destinations inside the PDFium adapter. |
 | 2026-09-28 | Accepted ADR-0006, matched internal links to destination headings, and emitted deterministic Markdown anchors for resolved navigation. |
 | 2026-09-28 | Aggregated unsupported-link diagnostics by source page and omission category while preserving deterministic warning order and counts. |
+| 2026-09-28 | Accepted ADR-0007 with strict ruled-table acceptance criteria and conservative regional fallback. |

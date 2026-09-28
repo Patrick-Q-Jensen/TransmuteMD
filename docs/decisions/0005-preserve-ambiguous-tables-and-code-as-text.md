@@ -1,6 +1,7 @@
 # ADR-0005: Preserve ambiguous tables and code as text
 
-- **Status:** Accepted
+- **Status:** Superseded in part by
+  [ADR-0007](0007-reconstruct-reliable-ruled-tables.md)
 - **Date:** 2026-09-27
 
 ## Context
@@ -28,6 +29,9 @@ rectangular cell assignment. It will introduce an engine-neutral semantic
 table model before Markdown rendering. Layouts with merged cells, ambiguous
 column membership, or multiline cells will continue to fall back to text
 unless a lossless representation is designed.
+
+ADR-0007 supersedes this table decision with acceptance criteria for reliable
+ruled tables. The code-block decision remains accepted.
 
 Future code-block support must require multiple adjacent lines with consistent
 monospaced-font evidence, left alignment, line spacing, and reconstructable
