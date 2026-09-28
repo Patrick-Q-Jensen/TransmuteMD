@@ -261,7 +261,7 @@ but does not preserve their source row and column relationships accurately.
       generated Markdown for the section 11 reference tables and the section
       12 revision table; record the exact rejected, merged, or misassigned
       relationships before changing heuristics.
-- [ ] Preserve adjacent short horizontal tables as independent schemas,
+- [x] Preserve adjacent short horizontal tables as independent schemas,
       including their header-to-body column boundaries and links, without
       relying on known labels or section numbers.
 - [ ] Reconstruct multi-line or stacked table headers and multiple logical

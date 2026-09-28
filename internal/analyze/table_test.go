@@ -305,6 +305,64 @@ func TestDetectTablesSegmentsAdjacentHorizontalSchemas(t *testing.T) {
 	}
 }
 
+func TestDetectTablesKeepsAdjacentShortSchemasAndLinksIndependent(t *testing.T) {
+	t.Parallel()
+
+	target := document.LinkTarget{
+		Kind: document.LinkTargetExternal,
+		URI:  "https://example.com/reference",
+	}
+	rulings := []document.Ruling{
+		horizontalRuling(10, 130, 10),
+		horizontalRuling(10, 130, 30),
+		horizontalRuling(10, 130, 50),
+		horizontalRuling(10, 130, 70),
+		horizontalRuling(10, 130, 90),
+	}
+	runs := []orderedRun{
+		styledTableRun("Key", 12, 15, 25, 25, 700),
+		styledTableRun("Identity", 45, 15, 75, 25, 700),
+		styledTableRun("Title", 95, 15, 120, 25, 700),
+		styledTableRun("A", 12, 35, 20, 45, 400),
+		styledTableRun("One", 45, 35, 65, 45, 400),
+		linkedStyledTableRun("Linked", 95, 35, 120, 45, 400, target),
+		styledTableRun("Name", 12, 55, 32, 65, 700),
+		styledTableRun("Result", 65, 55, 95, 65, 700),
+		styledTableRun("Case", 12, 75, 32, 85, 400),
+		styledTableRun("Passed", 65, 75, 95, 85, 400),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  120,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 2 {
+		t.Fatalf("table count = %d, want 2", len(result.tables))
+	}
+	if got := len(result.tables[0].columns) - 1; got != 3 {
+		t.Fatalf("first table column count = %d, want 3", got)
+	}
+	if got := len(result.tables[1].columns) - 1; got != 2 {
+		t.Fatalf("second table column count = %d, want 2", got)
+	}
+	first, err := semanticTable(context.Background(), result.tables[0])
+	if err != nil {
+		t.Fatalf("semanticTable() returned an unexpected error: %v", err)
+	}
+	gotLinks := first.Rows[1].Cells[2].Links
+	wantLinks := []document.TextLink{{
+		Start:  0,
+		End:    len("Linked"),
+		Target: target,
+	}}
+	if !reflect.DeepEqual(gotLinks, wantLinks) {
+		t.Fatalf("linked cell links = %#v, want %#v", gotLinks, wantLinks)
+	}
+}
+
 func TestDetectTablesInfersThreeColumnsAndKeepsWrappedCellText(t *testing.T) {
 	t.Parallel()
 
@@ -604,4 +662,18 @@ func styledTableRun(
 		},
 		text: text,
 	}
+}
+
+func linkedStyledTableRun(
+	text string,
+	left,
+	top,
+	right,
+	bottom float64,
+	weight int,
+	target document.LinkTarget,
+) orderedRun {
+	run := styledTableRun(text, left, top, right, bottom, weight)
+	run.linkTarget = target
+	return run
 }
