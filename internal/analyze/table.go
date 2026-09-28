@@ -1,0 +1,354 @@
+package analyze
+
+import (
+	"context"
+	"math"
+	"slices"
+	"strings"
+
+	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/document"
+)
+
+const (
+	tableCoordinateTolerance = 2.5
+	minimumTableCellHeight   = 4.0
+	minimumTableCellWidth    = 8.0
+)
+
+type tableSegment struct {
+	position float64
+	start    float64
+	end      float64
+}
+
+type detectedTable struct {
+	bounds  document.Rectangle
+	columns []float64
+	rows    [][]detectedTableCell
+}
+
+type detectedTableCell struct {
+	bounds document.Rectangle
+	runs   []orderedRun
+}
+
+type horizontalSegmentGroup struct {
+	left  float64
+	right float64
+	lines []tableSegment
+}
+
+func detectTables(
+	ctx context.Context,
+	rulings []document.Ruling,
+	runs []orderedRun,
+) ([]detectedTable, error) {
+	horizontal, vertical := normalizedTableSegments(rulings)
+	groups := groupHorizontalSegments(horizontal)
+	var tables []detectedTable
+	for _, group := range groups {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		table, ok := tableFromHorizontalGroup(group, vertical)
+		if !ok || !assignTableRuns(&table, runs) {
+			continue
+		}
+		tables = append(tables, table)
+	}
+	slices.SortStableFunc(tables, func(left, right detectedTable) int {
+		if order := compareFloat(left.bounds.Top, right.bounds.Top); order != 0 {
+			return order
+		}
+		return compareFloat(left.bounds.Left, right.bounds.Left)
+	})
+	return tables, nil
+}
+
+func normalizedTableSegments(
+	rulings []document.Ruling,
+) ([]tableSegment, []tableSegment) {
+	horizontal := make([]tableSegment, 0, len(rulings))
+	vertical := make([]tableSegment, 0, len(rulings))
+	for _, ruling := range rulings {
+		if ruling.Start.Y == ruling.End.Y {
+			horizontal = append(horizontal, tableSegment{
+				position: ruling.Start.Y,
+				start:    math.Min(ruling.Start.X, ruling.End.X),
+				end:      math.Max(ruling.Start.X, ruling.End.X),
+			})
+			continue
+		}
+		vertical = append(vertical, tableSegment{
+			position: ruling.Start.X,
+			start:    math.Min(ruling.Start.Y, ruling.End.Y),
+			end:      math.Max(ruling.Start.Y, ruling.End.Y),
+		})
+	}
+	return mergeTableSegments(horizontal), mergeTableSegments(vertical)
+}
+
+func mergeTableSegments(segments []tableSegment) []tableSegment {
+	slices.SortStableFunc(segments, func(left, right tableSegment) int {
+		if order := compareFloat(left.position, right.position); order != 0 {
+			return order
+		}
+		if order := compareFloat(left.start, right.start); order != 0 {
+			return order
+		}
+		return compareFloat(left.end, right.end)
+	})
+
+	var merged []tableSegment
+	for start := 0; start < len(segments); {
+		end := start + 1
+		position := segments[start].position
+		for end < len(segments) &&
+			math.Abs(segments[end].position-position) <= tableCoordinateTolerance {
+			position = (position*float64(end-start) + segments[end].position) /
+				float64(end-start+1)
+			end++
+		}
+
+		cluster := slices.Clone(segments[start:end])
+		slices.SortStableFunc(cluster, func(left, right tableSegment) int {
+			if order := compareFloat(left.start, right.start); order != 0 {
+				return order
+			}
+			return compareFloat(left.end, right.end)
+		})
+		current := tableSegment{
+			position: position,
+			start:    cluster[0].start,
+			end:      cluster[0].end,
+		}
+		for _, segment := range cluster[1:] {
+			if segment.start <= current.end+tableCoordinateTolerance {
+				current.end = math.Max(current.end, segment.end)
+				continue
+			}
+			merged = append(merged, current)
+			current = tableSegment{
+				position: position,
+				start:    segment.start,
+				end:      segment.end,
+			}
+		}
+		merged = append(merged, current)
+		start = end
+	}
+	return merged
+}
+
+func groupHorizontalSegments(
+	horizontal []tableSegment,
+) []horizontalSegmentGroup {
+	var groups []horizontalSegmentGroup
+	for _, segment := range horizontal {
+		if segment.end-segment.start < minimumTableCellWidth*2 {
+			continue
+		}
+		groupIndex := -1
+		for index := range groups {
+			if math.Abs(groups[index].left-segment.start) <= tableCoordinateTolerance &&
+				math.Abs(groups[index].right-segment.end) <= tableCoordinateTolerance {
+				groupIndex = index
+				break
+			}
+		}
+		if groupIndex < 0 {
+			groups = append(groups, horizontalSegmentGroup{
+				left:  segment.start,
+				right: segment.end,
+				lines: []tableSegment{segment},
+			})
+			continue
+		}
+		group := &groups[groupIndex]
+		count := float64(len(group.lines))
+		group.left = (group.left*count + segment.start) / (count + 1)
+		group.right = (group.right*count + segment.end) / (count + 1)
+		group.lines = append(group.lines, segment)
+	}
+	return groups
+}
+
+func tableFromHorizontalGroup(
+	group horizontalSegmentGroup,
+	vertical []tableSegment,
+) (detectedTable, bool) {
+	if len(group.lines) < 3 {
+		return detectedTable{}, false
+	}
+	slices.SortStableFunc(group.lines, func(left, right tableSegment) int {
+		return compareFloat(left.position, right.position)
+	})
+
+	var columns []float64
+	for index := 1; index < len(group.lines); index++ {
+		top := group.lines[index-1].position
+		bottom := group.lines[index].position
+		if bottom-top < minimumTableCellHeight {
+			return detectedTable{}, false
+		}
+		rowColumns := []float64{group.left}
+		for _, segment := range vertical {
+			if segment.position <= group.left+tableCoordinateTolerance ||
+				segment.position >= group.right-tableCoordinateTolerance ||
+				segment.start > top+tableCoordinateTolerance ||
+				segment.end < bottom-tableCoordinateTolerance {
+				continue
+			}
+			rowColumns = append(rowColumns, segment.position)
+		}
+		rowColumns = append(rowColumns, group.right)
+		rowColumns = mergeCoordinates(rowColumns)
+		if len(rowColumns) < 3 || !validColumnWidths(rowColumns) {
+			return detectedTable{}, false
+		}
+		if columns == nil {
+			columns = rowColumns
+			continue
+		}
+		if !sameCoordinates(columns, rowColumns) {
+			return detectedTable{}, false
+		}
+	}
+
+	rows := make([][]detectedTableCell, len(group.lines)-1)
+	for rowIndex := range rows {
+		rows[rowIndex] = make([]detectedTableCell, len(columns)-1)
+		for columnIndex := range rows[rowIndex] {
+			rows[rowIndex][columnIndex].bounds = document.Rectangle{
+				Left:   columns[columnIndex],
+				Top:    group.lines[rowIndex].position,
+				Right:  columns[columnIndex+1],
+				Bottom: group.lines[rowIndex+1].position,
+			}
+		}
+	}
+	return detectedTable{
+		bounds: document.Rectangle{
+			Left:   group.left,
+			Top:    group.lines[0].position,
+			Right:  group.right,
+			Bottom: group.lines[len(group.lines)-1].position,
+		},
+		columns: columns,
+		rows:    rows,
+	}, true
+}
+
+func mergeCoordinates(coordinates []float64) []float64 {
+	slices.Sort(coordinates)
+	merged := coordinates[:0]
+	for _, coordinate := range coordinates {
+		if len(merged) == 0 ||
+			coordinate-merged[len(merged)-1] > tableCoordinateTolerance {
+			merged = append(merged, coordinate)
+			continue
+		}
+		merged[len(merged)-1] = (merged[len(merged)-1] + coordinate) / 2
+	}
+	return merged
+}
+
+func validColumnWidths(columns []float64) bool {
+	for index := 1; index < len(columns); index++ {
+		if columns[index]-columns[index-1] < minimumTableCellWidth {
+			return false
+		}
+	}
+	return true
+}
+
+func sameCoordinates(left, right []float64) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if math.Abs(left[index]-right[index]) > tableCoordinateTolerance {
+			return false
+		}
+	}
+	return true
+}
+
+func assignTableRuns(table *detectedTable, runs []orderedRun) bool {
+	columnHasText := make([]bool, len(table.columns)-1)
+	headerHasText := make([]bool, len(table.columns)-1)
+	hasBodyText := false
+	for _, run := range runs {
+		centerX := (run.run.Bounds.Left + run.run.Bounds.Right) / 2
+		centerY := verticalCenter(run.run.Bounds)
+		if centerX <= table.bounds.Left ||
+			centerX >= table.bounds.Right ||
+			centerY <= table.bounds.Top ||
+			centerY >= table.bounds.Bottom {
+			continue
+		}
+		row := coordinateInterval(centerY, tableRowCoordinates(table))
+		column := coordinateInterval(centerX, table.columns)
+		if row < 0 || column < 0 ||
+			crossesInternalBoundary(run.run.Bounds, table.columns) ||
+			crossesInternalBoundaryY(run.run.Bounds, tableRowCoordinates(table)) {
+			return false
+		}
+		table.rows[row][column].runs = append(table.rows[row][column].runs, run)
+		if strings.TrimSpace(run.text) != "" {
+			columnHasText[column] = true
+			if row == 0 {
+				headerHasText[column] = true
+			} else {
+				hasBodyText = true
+			}
+		}
+	}
+	return hasBodyText &&
+		!slices.Contains(columnHasText, false) &&
+		!slices.Contains(headerHasText, false)
+}
+
+func tableRowCoordinates(table *detectedTable) []float64 {
+	coordinates := make([]float64, len(table.rows)+1)
+	coordinates[0] = table.bounds.Top
+	for index := range table.rows {
+		coordinates[index+1] = table.rows[index][0].bounds.Bottom
+	}
+	return coordinates
+}
+
+func coordinateInterval(value float64, boundaries []float64) int {
+	for index := 1; index < len(boundaries); index++ {
+		if value > boundaries[index-1] && value < boundaries[index] {
+			return index - 1
+		}
+	}
+	return -1
+}
+
+func crossesInternalBoundary(
+	bounds document.Rectangle,
+	boundaries []float64,
+) bool {
+	for _, boundary := range boundaries[1 : len(boundaries)-1] {
+		if bounds.Left < boundary-tableCoordinateTolerance &&
+			bounds.Right > boundary+tableCoordinateTolerance {
+			return true
+		}
+	}
+	return false
+}
+
+func crossesInternalBoundaryY(
+	bounds document.Rectangle,
+	boundaries []float64,
+) bool {
+	for _, boundary := range boundaries[1 : len(boundaries)-1] {
+		if bounds.Top < boundary-tableCoordinateTolerance &&
+			bounds.Bottom > boundary+tableCoordinateTolerance {
+			return true
+		}
+	}
+	return false
+}

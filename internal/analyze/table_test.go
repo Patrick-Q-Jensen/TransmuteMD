@@ -1,0 +1,111 @@
+package analyze
+
+import (
+	"context"
+	"testing"
+
+	"github.com/Patrick-Q-Jensen/TransmuteMD/internal/document"
+)
+
+func TestDetectTablesAssignsRectangularCells(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 110, 10),
+		horizontalRuling(10, 110, 30),
+		horizontalRuling(10, 110, 50),
+		verticalRuling(60, 10, 50),
+	}
+	runs := []orderedRun{
+		tableRun("Left", 15, 15, 35, 25),
+		tableRun("Right", 65, 15, 95, 25),
+		tableRun("A", 15, 35, 25, 45),
+		tableRun("B", 65, 35, 75, 45),
+	}
+
+	tables, err := detectTables(context.Background(), rulings, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(tables))
+	}
+	table := tables[0]
+	if len(table.rows) != 2 || len(table.columns) != 3 {
+		t.Fatalf("table shape = %dx%d, want 2x2", len(table.rows), len(table.columns)-1)
+	}
+	if got := table.rows[0][0].runs[0].text; got != "Left" {
+		t.Fatalf("header cell text = %q, want Left", got)
+	}
+	if got := table.rows[1][1].runs[0].text; got != "B" {
+		t.Fatalf("body cell text = %q, want B", got)
+	}
+}
+
+func TestDetectTablesRejectsMergedCellGrid(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 110, 10),
+		horizontalRuling(10, 110, 30),
+		horizontalRuling(10, 110, 50),
+		verticalRuling(60, 30, 50),
+	}
+	runs := []orderedRun{
+		tableRun("Merged header", 15, 15, 95, 25),
+		tableRun("A", 15, 35, 25, 45),
+		tableRun("B", 65, 35, 75, 45),
+	}
+
+	tables, err := detectTables(context.Background(), rulings, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(tables) != 0 {
+		t.Fatalf("table count = %d, want 0", len(tables))
+	}
+}
+
+func TestDetectTablesHonorsCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := detectTables(ctx, []document.Ruling{
+		horizontalRuling(10, 110, 10),
+	}, nil)
+	if err == nil {
+		t.Fatal("detectTables() returned nil error for cancelled context")
+	}
+}
+
+func horizontalRuling(left, right, y float64) document.Ruling {
+	return document.Ruling{
+		Start: document.Point{X: left, Y: y},
+		End:   document.Point{X: right, Y: y},
+		Width: 1,
+	}
+}
+
+func verticalRuling(x, top, bottom float64) document.Ruling {
+	return document.Ruling{
+		Start: document.Point{X: x, Y: top},
+		End:   document.Point{X: x, Y: bottom},
+		Width: 1,
+	}
+}
+
+func tableRun(text string, left, top, right, bottom float64) orderedRun {
+	return orderedRun{
+		run: document.TextRun{
+			Text: text,
+			Bounds: document.Rectangle{
+				Left:   left,
+				Top:    top,
+				Right:  right,
+				Bottom: bottom,
+			},
+		},
+		text: text,
+	}
+}

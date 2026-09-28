@@ -230,7 +230,7 @@ semantic models established by earlier work.
       reconstruction and conservative fallback.
 - [x] Add engine-neutral ruling-line or equivalent geometry evidence where
       the backend exposes it.
-- [ ] Detect table regions, rows, columns, and cells from geometry and aligned
+- [x] Detect table regions, rows, columns, and cells from geometry and aligned
       text.
 - [ ] Order wrapped text within each cell before traversing cells by row and
       column.
@@ -347,3 +347,4 @@ A task is complete when:
 | 2026-09-28 | Aggregated unsupported-link diagnostics by source page and omission category while preserving deterministic warning order and counts. |
 | 2026-09-28 | Accepted ADR-0007 with strict ruled-table acceptance criteria and conservative regional fallback. |
 | 2026-09-28 | Added bounded engine-neutral ruling geometry extracted from visible axis-aligned PDF path edges. |
+| 2026-09-28 | Detected complete ruled-table lattices and assigned text unambiguously to physical cells. |
