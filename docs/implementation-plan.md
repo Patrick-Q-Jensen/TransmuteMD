@@ -240,7 +240,7 @@ semantic models established by earlier work.
       fallback and one diagnostic per table region.
 - [x] Partition composite ruled regions into independently validated,
       schema-consistent table bands around full-width separators.
-- [ ] Reconstruct horizontally ruled tables only when repeated text anchors
+- [x] Reconstruct horizontally ruled tables only when repeated text anchors
       provide unambiguous column evidence.
 
 ### Group 5: Forms and document fields
@@ -357,3 +357,4 @@ A task is complete when:
 | 2026-09-28 | Preserved rejected and strongly aligned table regions as text with one non-overlapping diagnostic per region. |
 | 2026-09-28 | Partitioned mixed ruled regions by stable column signatures and recovered independently headed table bands. |
 | 2026-09-28 | Accepted ADR-0008 for conservative column inference in horizontally ruled tables. |
+| 2026-09-28 | Reconstructed horizontally ruled tables from repeated word-start anchors with strict support and row-termination checks. |

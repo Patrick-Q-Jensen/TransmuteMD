@@ -83,6 +83,127 @@ func TestDetectTablesSegmentsStableGridAfterFullWidthRow(t *testing.T) {
 	}
 }
 
+func TestDetectTablesInfersRepeatedColumnsWithinHorizontalRules(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 110, 10),
+		horizontalRuling(10, 110, 30),
+		horizontalRuling(10, 110, 50),
+		horizontalRuling(10, 110, 70),
+		horizontalRuling(10, 110, 90),
+		horizontalRuling(10, 110, 110),
+	}
+	runs := []orderedRun{
+		styledTableRun("Name", 12, 15, 32, 25, 700),
+		styledTableRun("Result", 65, 15, 95, 25, 700),
+		styledTableRun("A", 12, 35, 20, 45, 400),
+		styledTableRun("Passed", 65, 35, 95, 45, 400),
+		styledTableRun("B", 12, 55, 20, 65, 400),
+		styledTableRun("Failed", 65, 55, 95, 65, 400),
+		styledTableRun("C", 12, 75, 20, 85, 400),
+		styledTableRun("Passed", 65, 75, 95, 85, 400),
+		styledTableRun("Next section", 12, 95, 55, 105, 700),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  140,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
+	}
+	table := result.tables[0]
+	if len(table.rows) != 4 || len(table.columns) != 3 {
+		t.Fatalf("table shape = %dx%d, want 4x2", len(table.rows), len(table.columns)-1)
+	}
+	if table.bounds.Bottom != 90 {
+		t.Fatalf("table bottom = %v, want 90 before following section", table.bounds.Bottom)
+	}
+}
+
+func TestDetectTablesInfersThreeColumnsAndKeepsWrappedCellText(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 130, 10),
+		horizontalRuling(10, 130, 30),
+		horizontalRuling(10, 130, 55),
+		horizontalRuling(10, 130, 80),
+		horizontalRuling(10, 130, 105),
+	}
+	runs := []orderedRun{
+		styledTableRun("ID", 12, 15, 22, 25, 700),
+		styledTableRun("Description", 35, 15, 75, 25, 700),
+		styledTableRun("Case", 100, 15, 120, 25, 700),
+		styledTableRun("1", 12, 35, 18, 45, 400),
+		styledTableRun("Wrapped", 35, 35, 65, 45, 400),
+		styledTableRun("TC-1", 100, 35, 120, 45, 400),
+		styledTableRun("description", 35, 45, 75, 52, 400),
+		styledTableRun("2", 12, 60, 18, 70, 400),
+		styledTableRun("Second", 35, 60, 60, 70, 400),
+		styledTableRun("TC-2", 100, 60, 120, 70, 400),
+		styledTableRun("3", 12, 85, 18, 95, 400),
+		styledTableRun("Third", 35, 85, 55, 95, 400),
+		styledTableRun("TC-3", 100, 85, 120, 95, 400),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  140,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
+	}
+	table := result.tables[0]
+	if len(table.rows) != 4 || len(table.columns) != 4 {
+		t.Fatalf("table shape = %dx%d, want 4x3", len(table.rows), len(table.columns)-1)
+	}
+	content, err := orderedTableContent(context.Background(), table)
+	if err != nil {
+		t.Fatalf("orderedTableContent() returned an unexpected error: %v", err)
+	}
+	if got, want := content[1][1].text, "Wrapped description"; got != want {
+		t.Fatalf("wrapped cell text = %q, want %q", got, want)
+	}
+}
+
+func TestDetectTablesRejectsWeakHorizontalAnchorEvidence(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 110, 10),
+		horizontalRuling(10, 110, 30),
+		horizontalRuling(10, 110, 50),
+		horizontalRuling(10, 110, 70),
+	}
+	runs := []orderedRun{
+		styledTableRun("Name", 12, 15, 32, 25, 700),
+		styledTableRun("Result", 65, 15, 95, 25, 700),
+		styledTableRun("A", 12, 35, 20, 45, 400),
+		styledTableRun("Passed", 65, 35, 95, 45, 400),
+		styledTableRun("B", 12, 55, 20, 65, 400),
+		styledTableRun("Failed", 45, 55, 75, 65, 400),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  100,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 0 {
+		t.Fatalf("table count = %d, want 0", len(result.tables))
+	}
+}
+
 func TestOrderedTableContentOrdersWrappedCellsByRowAndColumn(t *testing.T) {
 	t.Parallel()
 

@@ -202,6 +202,11 @@ partitioned into maximal adjacent row bands with the same vertical-boundary
 signature. A table carved from a mixed-signature region additionally requires
 a bold header distinct from its body; full-width heading or separator rows
 remain outside the table. Cells are then traversed in row-major order.
+When internal vertical rules are absent, horizontal rules may define rows and
+repeated word-start coordinates may define columns under ADR-0008. Inferred
+starts must occur in the header and at least 75 percent of body rows, with a
+distinct header and both edge cells populated in each accepted body row. A
+conflicting or incomplete row terminates the inferred table.
 Accepted table lines are removed from paragraph grouping without changing the
 surrounding page order. Rejected ruled regions and separate runs of strongly
 aligned table-like text remain ordinary text and produce one diagnostic per
@@ -215,7 +220,8 @@ line does not qualify, and inline code inference is separate work. These
 constraints are recorded in
 [ADR-0005](decisions/0005-preserve-ambiguous-tables-and-code-as-text.md);
 ruled-table acceptance is governed by
-[ADR-0007](decisions/0007-reconstruct-reliable-ruled-tables.md).
+[ADR-0007](decisions/0007-reconstruct-reliable-ruled-tables.md) and
+[ADR-0008](decisions/0008-infer-columns-in-horizontally-ruled-tables.md).
 The initial analyzer reports table-like text only after three adjacent lines
 show multiple large intra-line gaps. It reports code-like text only after two
 aligned adjacent lines consistently use recognized monospaced font names.

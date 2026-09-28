@@ -10,9 +10,12 @@ import (
 )
 
 const (
-	tableCoordinateTolerance = 2.5
-	minimumTableCellHeight   = 4.0
-	minimumTableCellWidth    = 8.0
+	tableCoordinateTolerance         = 2.5
+	minimumTableCellHeight           = 4.0
+	minimumTableCellWidth            = 8.0
+	minimumHorizontalTableBodyRows   = 2
+	horizontalAnchorBodySupportRatio = 0.75
+	maximumFirstAnchorInset          = 8.0
 )
 
 type tableSegment struct {
@@ -26,6 +29,7 @@ type detectedTable struct {
 	columns            []float64
 	rows               [][]detectedTableCell
 	requireHeaderStyle bool
+	horizontal         bool
 }
 
 type detectedTableCell struct {
@@ -84,6 +88,18 @@ func detectTables(
 				bandGroup,
 				len(bandGroups) > 1,
 			)
+			if !ok && len(bandGroup.columns) == 2 {
+				var inferErr error
+				table, ok, inferErr = inferredHorizontalTable(
+					ctx,
+					group,
+					bandGroup,
+					runs,
+				)
+				if inferErr != nil {
+					return tableDetection{}, inferErr
+				}
+			}
 			if !ok {
 				tableLike, err := hasTableCandidateText(ctx, bandBounds, runs)
 				if err != nil {
@@ -94,12 +110,29 @@ func detectTables(
 				}
 				continue
 			}
-			if !assignTableRuns(&table, runs) ||
+			var assigned bool
+			if table.horizontal {
+				assigned = assignHorizontalTableRuns(&table, runs)
+			} else {
+				assigned = assignTableRuns(&table, runs)
+			}
+			if !assigned ||
 				table.requireHeaderStyle && !hasDistinctTableHeader(table) {
 				result.rejected = append(result.rejected, table.bounds)
 				continue
 			}
 			result.tables = append(result.tables, table)
+			if table.bounds.Bottom < bandBounds.Bottom-tableCoordinateTolerance {
+				remainder := bandBounds
+				remainder.Top = table.bounds.Bottom
+				tableLike, err := hasTableCandidateText(ctx, remainder, runs)
+				if err != nil {
+					return tableDetection{}, err
+				}
+				if tableLike {
+					result.rejected = append(result.rejected, remainder)
+				}
+			}
 		}
 		if len(bandGroups) == 0 {
 			tableLike, err := hasTableCandidateText(ctx, bounds, runs)
@@ -393,6 +426,226 @@ func tableFromBandGroup(
 		rows:               rows,
 		requireHeaderStyle: segmented,
 	}, true
+}
+
+type tableAnchorCluster struct {
+	position float64
+	rows     map[int]struct{}
+}
+
+func inferredHorizontalTable(
+	ctx context.Context,
+	group horizontalSegmentGroup,
+	bandGroup tableBandGroup,
+	runs []orderedRun,
+) (detectedTable, bool, error) {
+	if len(bandGroup.bands) < minimumHorizontalTableBodyRows+1 {
+		return detectedTable{}, false, nil
+	}
+	anchors, err := repeatedTableAnchors(ctx, group, bandGroup, runs)
+	if err != nil {
+		return detectedTable{}, false, err
+	}
+	if len(anchors) < 2 ||
+		anchors[0]-group.left > maximumFirstAnchorInset {
+		return detectedTable{}, false, nil
+	}
+
+	columns := []float64{group.left}
+	columns = append(columns, anchors[1:]...)
+	columns = append(columns, group.right)
+	columns = mergeCoordinates(columns)
+	if len(columns) < 3 || !validColumnWidths(columns) {
+		return detectedTable{}, false, nil
+	}
+
+	inferredGroup := bandGroup
+	inferredGroup.columns = columns
+	table, ok := tableFromBandGroup(group, inferredGroup, true)
+	if !ok {
+		return detectedTable{}, false, nil
+	}
+	table.horizontal = true
+	return table, true, nil
+}
+
+func repeatedTableAnchors(
+	ctx context.Context,
+	group horizontalSegmentGroup,
+	bandGroup tableBandGroup,
+	runs []orderedRun,
+) ([]float64, error) {
+	var clusters []tableAnchorCluster
+	for rowIndex, band := range bandGroup.bands {
+		starts, err := tableBandWordStarts(ctx, group, band, runs)
+		if err != nil {
+			return nil, err
+		}
+		for _, start := range starts {
+			clusterIndex := -1
+			for index := range clusters {
+				if math.Abs(clusters[index].position-start) <= tableCoordinateTolerance {
+					clusterIndex = index
+					break
+				}
+			}
+			if clusterIndex < 0 {
+				clusters = append(clusters, tableAnchorCluster{
+					position: start,
+					rows:     map[int]struct{}{rowIndex: {}},
+				})
+				continue
+			}
+			cluster := &clusters[clusterIndex]
+			if _, duplicate := cluster.rows[rowIndex]; duplicate {
+				continue
+			}
+			count := float64(len(cluster.rows))
+			cluster.position = (cluster.position*count + start) / (count + 1)
+			cluster.rows[rowIndex] = struct{}{}
+		}
+	}
+
+	requiredBodyRows := int(math.Ceil(
+		float64(len(bandGroup.bands)-1) * horizontalAnchorBodySupportRatio,
+	))
+	requiredBodyRows = max(requiredBodyRows, minimumHorizontalTableBodyRows)
+	var anchors []float64
+	for _, cluster := range clusters {
+		if _, inHeader := cluster.rows[0]; !inHeader {
+			continue
+		}
+		bodyRows := 0
+		for rowIndex := range cluster.rows {
+			if rowIndex > 0 {
+				bodyRows++
+			}
+		}
+		if bodyRows >= requiredBodyRows {
+			anchors = append(anchors, cluster.position)
+		}
+	}
+	slices.Sort(anchors)
+	return mergeCoordinates(anchors), nil
+}
+
+func tableBandWordStarts(
+	ctx context.Context,
+	group horizontalSegmentGroup,
+	band tableRowBand,
+	runs []orderedRun,
+) ([]float64, error) {
+	var contained []orderedRun
+	for _, run := range runs {
+		centerX := (run.run.Bounds.Left + run.run.Bounds.Right) / 2
+		centerY := verticalCenter(run.run.Bounds)
+		if centerX > group.left &&
+			centerX < group.right &&
+			centerY > band.top &&
+			centerY < band.bottom {
+			contained = append(contained, run)
+		}
+	}
+	lines, err := tableCellLines(ctx, contained)
+	if err != nil {
+		return nil, err
+	}
+
+	var starts []float64
+	for _, line := range lines {
+		atWordStart := true
+		var previous *orderedRun
+		trackingThreshold := line.trackingGapThreshold()
+		for index := range line.runs {
+			run := &line.runs[index]
+			if strings.TrimSpace(run.text) == "" {
+				atWordStart = true
+				previous = run
+				continue
+			}
+			if atWordStart ||
+				previous != nil && hasWordGap(
+					previous.run,
+					run.run,
+					trackingThreshold,
+				) {
+				starts = append(starts, run.run.Bounds.Left)
+			}
+			atWordStart = strings.HasSuffix(run.text, " ")
+			previous = run
+		}
+	}
+	return mergeCoordinates(starts), nil
+}
+
+func assignHorizontalTableRuns(
+	table *detectedTable,
+	runs []orderedRun,
+) bool {
+	rowCoordinates := tableRowCoordinates(table)
+	invalidRows := make([]bool, len(table.rows))
+	for _, run := range runs {
+		centerX := (run.run.Bounds.Left + run.run.Bounds.Right) / 2
+		centerY := verticalCenter(run.run.Bounds)
+		if centerX <= table.bounds.Left ||
+			centerX >= table.bounds.Right ||
+			centerY <= table.bounds.Top ||
+			centerY >= table.bounds.Bottom {
+			continue
+		}
+		row := coordinateInterval(centerY, rowCoordinates)
+		column := coordinateInterval(centerX, table.columns)
+		if row < 0 {
+			continue
+		}
+		if column < 0 ||
+			crossesInternalBoundary(run.run.Bounds, table.columns) ||
+			crossesInternalBoundaryY(run.run.Bounds, rowCoordinates) {
+			invalidRows[row] = true
+			continue
+		}
+		table.rows[row][column].runs = append(table.rows[row][column].runs, run)
+	}
+	if invalidRows[0] {
+		return false
+	}
+
+	end := 1
+	for end < len(table.rows) &&
+		!invalidRows[end] &&
+		horizontalBodyRowComplete(table.rows[end]) {
+		end++
+	}
+	if end < minimumHorizontalTableBodyRows+1 {
+		return false
+	}
+	table.rows = table.rows[:end]
+	table.bounds.Bottom = table.rows[len(table.rows)-1][0].bounds.Bottom
+
+	columnHasText := make([]bool, len(table.columns)-1)
+	for rowIndex, row := range table.rows {
+		for columnIndex, cell := range row {
+			hasText := tableCellHasText(cell)
+			columnHasText[columnIndex] = columnHasText[columnIndex] || hasText
+			if rowIndex == 0 && !hasText {
+				return false
+			}
+		}
+	}
+	return !slices.Contains(columnHasText, false)
+}
+
+func horizontalBodyRowComplete(row []detectedTableCell) bool {
+	if len(row) < 2 {
+		return false
+	}
+	return tableCellHasText(row[0]) && tableCellHasText(row[len(row)-1])
+}
+
+func tableCellHasText(cell detectedTableCell) bool {
+	return slices.ContainsFunc(cell.runs, func(run orderedRun) bool {
+		return strings.TrimSpace(run.text) != ""
+	})
 }
 
 func mergeCoordinates(coordinates []float64) []float64 {
