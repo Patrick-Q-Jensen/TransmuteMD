@@ -356,3 +356,4 @@ A task is complete when:
 | 2026-09-28 | Added validated semantic table blocks and rendered accepted grids as escaped Markdown pipe tables. |
 | 2026-09-28 | Preserved rejected and strongly aligned table regions as text with one non-overlapping diagnostic per region. |
 | 2026-09-28 | Partitioned mixed ruled regions by stable column signatures and recovered independently headed table bands. |
+| 2026-09-28 | Accepted ADR-0008 for conservative column inference in horizontally ruled tables. |

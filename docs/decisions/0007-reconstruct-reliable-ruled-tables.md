@@ -1,6 +1,7 @@
 # ADR-0007: Reconstruct reliable ruled tables
 
-- **Status:** Accepted
+- **Status:** Superseded in part by
+  [ADR-0008](0008-infer-columns-in-horizontally-ruled-tables.md)
 - **Date:** 2026-09-28
 - **Supersedes:** The table portion of
   [ADR-0005](0005-preserve-ambiguous-tables-and-code-as-text.md)
@@ -42,6 +43,10 @@ Tables that fail any criterion remain in ordinary reading order. Analysis
 emits one engine-neutral fallback diagnostic for each rejected ruled region,
 not one diagnostic per source line or cell. Unruled aligned text remains plain
 text because alignment alone is not sufficient evidence for table semantics.
+
+ADR-0008 supersedes the requirement for every internal vertical boundary when
+horizontal rules and repeated text anchors provide equivalent unambiguous
+column evidence. The remaining acceptance and fallback rules stay in force.
 
 The Markdown renderer emits validated pipe tables. It escapes cell pipes and
 normalizes embedded line breaks to spaces. It does not emit raw HTML or invent
