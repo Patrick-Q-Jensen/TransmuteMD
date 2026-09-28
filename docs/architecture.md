@@ -218,6 +218,15 @@ rows. One- and two-body-row candidates may preserve sparse internal cells
 when each inferred start occurs in at least one body row. A conflicting or
 incomplete row can terminate a longer table, but at least two valid body rows
 must precede that truncation.
+Within an accepted horizontal table, a tall physical body band may be
+flattened into multiple semantic rows only when separated line groups expose
+two or more record starts aligned across at least two inferred columns.
+Nearby aligned lines remain wrapped cell content. Text from a source cell
+that visually spans the logical records is emitted once in the first
+applicable row, with empty continuation cells rather than duplicated values.
+Stacked header lines remain in their physical header cells. If separated
+content cannot be synchronized across columns, or a logical boundary would
+cross text, the table remains plain text.
 Accepted table lines are removed from paragraph grouping without changing the
 surrounding page order. Rejected ruled regions and separate runs of strongly
 aligned table-like text remain ordinary text and produce one diagnostic per
@@ -234,7 +243,9 @@ ruled-table acceptance is governed by
 [ADR-0007](decisions/0007-reconstruct-reliable-ruled-tables.md) and
 [ADR-0008](decisions/0008-infer-columns-in-horizontally-ruled-tables.md), with
 sparse-table extensions governed by
-[ADR-0009](decisions/0009-recover-sparse-ruled-tables.md).
+[ADR-0009](decisions/0009-recover-sparse-ruled-tables.md) and conservative
+tall-band flattening governed by
+[ADR-0010](decisions/0010-flatten-synchronized-table-records.md).
 The initial analyzer reports table-like text only after three adjacent lines
 show multiple large intra-line gaps. It reports code-like text only after two
 aligned adjacent lines consistently use recognized monospaced font names.

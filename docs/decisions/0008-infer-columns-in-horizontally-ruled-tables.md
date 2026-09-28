@@ -1,7 +1,8 @@
 # ADR-0008: Infer columns in horizontally ruled tables
 
 - **Status:** Superseded in part by
-  [ADR-0009](0009-recover-sparse-ruled-tables.md)
+  [ADR-0009](0009-recover-sparse-ruled-tables.md) and
+  [ADR-0010](0010-flatten-synchronized-table-records.md)
 - **Date:** 2026-09-28
 - **Supersedes:** The complete-vertical-grid requirement in
   [ADR-0007](0007-reconstruct-reliable-ruled-tables.md)

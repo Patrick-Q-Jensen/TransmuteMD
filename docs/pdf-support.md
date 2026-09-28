@@ -18,7 +18,9 @@ can identify a specific non-fatal fallback.
   row, and unambiguous cell text, including intentionally empty body rows.
 - Horizontally ruled tables with a distinct header and repeated, unambiguous
   text-start anchors within a local schema, including strongly evidenced
-  one-body-row tables and short tables with sparse internal cells.
+  one-body-row tables, short tables with sparse internal cells, stacked
+  header text, and tall body bands whose logical records align across
+  multiple columns.
 - Repeated page headers and footers when repetition is sufficiently strong.
 - Reliable external `http`, `https`, and `mailto` link annotations.
 - Internal links that can be matched to a semantic heading on their target
@@ -33,7 +35,7 @@ These are heuristic conversions, not round-trip reproduction of the PDF.
 | Password-protected or encrypted documents | Conversion fails without prompting for a password. No output is committed. |
 | Scanned or image-only pages | OCR is not performed. An entirely textless document fails with an actionable error; images in mixed documents are omitted. |
 | Images, vector graphics, and page backgrounds | Visual content is omitted. Extractable text on the same page is still converted. |
-| Borderless tables and tables with merged, split, nested, incomplete, or ambiguous cells | Text is preserved in geometric reading order and the rejected ruled region produces one warning. Horizontally ruled tables are accepted only when repeated text anchors satisfy the conservative column-inference criteria. |
+| Borderless tables and tables with merged, split, nested, incomplete, or ambiguous cells | Text is preserved in geometric reading order and the rejected ruled region produces one warning. Horizontally ruled tables are accepted only when repeated text anchors satisfy the conservative column-inference criteria. A vertically spanning value may be emitted once with blank continuation cells only when multiple logical records are independently synchronized across columns; ambiguous spans remain plain text. |
 | Source code | No fenced-code model is inferred. Text is emitted as escaped plain Markdown; strongly code-like regions produce a warning. |
 | Nested or interrupted body lists | Nested contents entries are modeled. Other indentation changes or uncertain body-list sequences become separate lists or paragraphs without a warning. |
 | Ambiguous, overlapping, or three-or-more-column layouts | Only clear two-column regions are reordered. Other layouts retain conservative geometric order and may read incorrectly without a warning. |

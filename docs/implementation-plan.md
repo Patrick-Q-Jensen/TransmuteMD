@@ -267,7 +267,7 @@ but does not preserve their source row and column relationships accurately.
 - [x] Reconstruct multi-line or stacked table headers and multiple logical
       records within a tall ruled band without collapsing them into one
       Markdown row or combining distinct source columns.
-- [ ] Define when merged or spanning source cells can be flattened into a
+- [x] Define when merged or spanning source cells can be flattened into a
       rectangular Markdown table without inventing relationships; otherwise
       retain the controlled plain-text fallback.
 - [ ] Add focused engine-neutral tests for the generalized geometry patterns

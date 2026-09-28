@@ -1,6 +1,7 @@
 # ADR-0009: Recover sparse ruled tables from local structural evidence
 
-- **Status:** Accepted
+- **Status:** Superseded in part by
+  [ADR-0010](0010-flatten-synchronized-table-records.md)
 - **Date:** 2026-09-28
 - **Supersedes in part:**
   [ADR-0007](0007-reconstruct-reliable-ruled-tables.md) and
