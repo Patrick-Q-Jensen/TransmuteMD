@@ -201,14 +201,19 @@ independently ordered into lines before wrapped text is joined, so content
 cannot flow across neighboring columns. Composite ruled regions are
 partitioned into maximal adjacent row bands with the same vertical-boundary
 signature. A table carved from a mixed-signature region additionally requires
-either a header distinct from its body or populated body cells in the complete
-repeated grid. A segmented grid with no body text still requires a bold
-populated header. Full-width heading or separator rows remain outside the
-table. Cells are then traversed in row-major order.
+either a header distinct from its body or a complete repeated grid with both
+populated body content and a header-only column. The latter accommodates
+graphic marker columns without treating a merged title followed by ordinary
+data rows as a header. A segmented grid with no body text still requires a
+bold populated header. Full-width heading or separator rows remain outside
+the table. Cells are then traversed in row-major order.
 When internal vertical rules are absent, horizontal rules may define rows and
-repeated word-start coordinates may define columns under ADR-0008. Inferred
+repeated word-start coordinates may define columns under ADR-0008. A ruled
+region is partitioned into local, bold-header-led candidates so adjacent
+horizontal-only tables do not dilute one another's column evidence. Inferred
 starts must occur in the header and at least 75 percent of body rows, with a
 distinct header and both edge cells populated in each accepted body row. A
+one-body-row candidate requires every inferred start to occur in that row. A
 conflicting or incomplete row terminates the inferred table.
 Accepted table lines are removed from paragraph grouping without changing the
 surrounding page order. Rejected ruled regions and separate runs of strongly

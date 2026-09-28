@@ -17,7 +17,8 @@ can identify a specific non-fatal fallback.
 - Regular ruled tables with a complete rectangular grid, a non-empty header
   row, and unambiguous cell text, including intentionally empty body rows.
 - Horizontally ruled tables with a distinct header and repeated, unambiguous
-  text-start anchors across the body rows.
+  text-start anchors within a local schema, including strongly evidenced
+  one-body-row tables.
 - Repeated page headers and footers when repetition is sufficiently strong.
 - Reliable external `http`, `https`, and `mailto` link annotations.
 - Internal links that can be matched to a semantic heading on their target

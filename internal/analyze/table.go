@@ -13,7 +13,7 @@ const (
 	tableCoordinateTolerance         = 2.5
 	minimumTableCellHeight           = 4.0
 	minimumTableCellWidth            = 8.0
-	minimumHorizontalTableBodyRows   = 2
+	minimumHorizontalTableBodyRows   = 1
 	horizontalAnchorBodySupportRatio = 0.75
 	maximumFirstAnchorInset          = 8.0
 )
@@ -88,9 +88,17 @@ func detectTables(
 				bandGroup,
 				len(bandGroups) > 1,
 			)
-			if !ok && len(bandGroup.columns) == 2 {
-				var inferErr error
-				table, ok, inferErr = inferredHorizontalTable(
+			if ok {
+				if !assignTableRuns(&table, runs) ||
+					table.requireHeaderStyle && !hasReliableTableHeader(table) {
+					result.rejected = append(result.rejected, table.bounds)
+					continue
+				}
+				result.tables = append(result.tables, table)
+				continue
+			}
+			if len(bandGroup.columns) == 2 {
+				inferred, inferErr := inferredHorizontalTables(
 					ctx,
 					group,
 					bandGroup,
@@ -99,8 +107,20 @@ func detectTables(
 				if inferErr != nil {
 					return tableDetection{}, inferErr
 				}
-			}
-			if !ok {
+				if len(inferred) > 0 {
+					result.tables = append(result.tables, inferred...)
+					rejected, rejectErr := horizontalTableFallbacks(
+						ctx,
+						bandBounds,
+						inferred,
+						runs,
+					)
+					if rejectErr != nil {
+						return tableDetection{}, rejectErr
+					}
+					result.rejected = append(result.rejected, rejected...)
+					continue
+				}
 				tableLike, err := hasTableCandidateText(ctx, bandBounds, runs)
 				if err != nil {
 					return tableDetection{}, err
@@ -110,28 +130,12 @@ func detectTables(
 				}
 				continue
 			}
-			var assigned bool
-			if table.horizontal {
-				assigned = assignHorizontalTableRuns(&table, runs)
-			} else {
-				assigned = assignTableRuns(&table, runs)
+			tableLike, err := hasTableCandidateText(ctx, bandBounds, runs)
+			if err != nil {
+				return tableDetection{}, err
 			}
-			if !assigned ||
-				table.requireHeaderStyle && !hasReliableTableHeader(table) {
-				result.rejected = append(result.rejected, table.bounds)
-				continue
-			}
-			result.tables = append(result.tables, table)
-			if table.bounds.Bottom < bandBounds.Bottom-tableCoordinateTolerance {
-				remainder := bandBounds
-				remainder.Top = table.bounds.Bottom
-				tableLike, err := hasTableCandidateText(ctx, remainder, runs)
-				if err != nil {
-					return tableDetection{}, err
-				}
-				if tableLike {
-					result.rejected = append(result.rejected, remainder)
-				}
+			if tableLike {
+				result.rejected = append(result.rejected, bandBounds)
 			}
 		}
 		if len(bandGroups) == 0 {
@@ -157,6 +161,116 @@ func detectTables(
 		return compareFloat(left.Left, right.Left)
 	})
 	return result, nil
+}
+
+func inferredHorizontalTables(
+	ctx context.Context,
+	group horizontalSegmentGroup,
+	bandGroup tableBandGroup,
+	runs []orderedRun,
+) ([]detectedTable, error) {
+	var tables []detectedTable
+	for start := 0; start < len(bandGroup.bands)-1; {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if !tableBandHasBoldText(group, bandGroup.bands[start], runs) {
+			start++
+			continue
+		}
+
+		end := len(bandGroup.bands)
+		for index := start + 1; index < len(bandGroup.bands); index++ {
+			if tableBandHasBoldText(group, bandGroup.bands[index], runs) {
+				end = index
+				break
+			}
+		}
+		if end-start < minimumHorizontalTableBodyRows+1 {
+			start++
+			continue
+		}
+
+		candidate := tableBandGroup{
+			bands:   slices.Clone(bandGroup.bands[start:end]),
+			columns: bandGroup.columns,
+		}
+		table, ok, err := inferredHorizontalTable(ctx, group, candidate, runs)
+		if err != nil {
+			return nil, err
+		}
+		if ok &&
+			assignHorizontalTableRuns(&table, runs) &&
+			hasDistinctTableHeader(table) {
+			tables = append(tables, table)
+			start = end
+			continue
+		}
+		start++
+	}
+	return tables, nil
+}
+
+func tableBandHasBoldText(
+	group horizontalSegmentGroup,
+	band tableRowBand,
+	runs []orderedRun,
+) bool {
+	var weights []int
+	for _, run := range runs {
+		centerX := (run.run.Bounds.Left + run.run.Bounds.Right) / 2
+		centerY := verticalCenter(run.run.Bounds)
+		if centerX <= group.left ||
+			centerX >= group.right ||
+			centerY <= band.top ||
+			centerY >= band.bottom ||
+			strings.TrimSpace(run.text) == "" {
+			continue
+		}
+		weights = append(weights, run.run.Style.FontWeight)
+	}
+	if len(weights) == 0 {
+		return false
+	}
+	slices.Sort(weights)
+	return weights[(len(weights)-1)/2] >= 600
+}
+
+func horizontalTableFallbacks(
+	ctx context.Context,
+	bounds document.Rectangle,
+	tables []detectedTable,
+	runs []orderedRun,
+) ([]document.Rectangle, error) {
+	cursor := bounds.Top
+	var rejected []document.Rectangle
+	for _, table := range tables {
+		if table.bounds.Top > cursor+tableCoordinateTolerance {
+			gap := bounds
+			gap.Top = cursor
+			gap.Bottom = table.bounds.Top
+			tableLike, err := hasTableCandidateText(ctx, gap, runs)
+			if err != nil {
+				return nil, err
+			}
+			if tableLike {
+				rejected = append(rejected, gap)
+			}
+		}
+		cursor = math.Max(cursor, table.bounds.Bottom)
+	}
+	if cursor < bounds.Bottom-tableCoordinateTolerance {
+		gap := bounds
+		gap.Top = cursor
+		tableLike, err := hasTableCandidateText(ctx, gap, runs)
+		if err != nil {
+			return nil, err
+		}
+		if tableLike {
+			rejected = append(rejected, gap)
+		}
+	}
+	return rejected, nil
 }
 
 func tableCandidateBounds(
@@ -751,17 +865,20 @@ func hasReliableTableHeader(table detectedTable) bool {
 	if table.horizontal {
 		return false
 	}
-	for rowIndex, row := range table.rows {
-		if rowIndex == 0 {
-			continue
-		}
-		for _, cell := range row {
-			if tableCellHasText(cell) {
-				return true
+	bodyHasText := false
+	headerOnlyColumn := false
+	for columnIndex := range table.rows[0] {
+		columnHasBodyText := false
+		for rowIndex := 1; rowIndex < len(table.rows); rowIndex++ {
+			if tableCellHasText(table.rows[rowIndex][columnIndex]) {
+				columnHasBodyText = true
+				bodyHasText = true
+				break
 			}
 		}
+		headerOnlyColumn = headerOnlyColumn || !columnHasBodyText
 	}
-	return false
+	return bodyHasText && headerOnlyColumn
 }
 
 func tableRowCoordinates(table *detectedTable) []float64 {

@@ -31,8 +31,9 @@ evidence:
   intentionally empty body rows. Empty cells remain empty and no content is
   invented.
 - A complete grid segment may use its repeated physical lattice as header
-  evidence when typography is not distinct. A segmented grid with no body
-  text still requires a bold populated header.
+  evidence when typography is not distinct and at least one header column is
+  intentionally graphic or blank throughout the body. A segmented grid with
+  no body text still requires a bold populated header.
 - A horizontal-only ruled region is evaluated as local candidate schemas
   rather than one page-wide schema. Visually distinct header or title bands
   may delimit candidates.

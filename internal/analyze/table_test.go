@@ -228,6 +228,83 @@ func TestDetectTablesInfersRepeatedColumnsWithinHorizontalRules(t *testing.T) {
 	}
 }
 
+func TestDetectTablesInfersColumnsFromOneBodyRow(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 110, 10),
+		horizontalRuling(10, 110, 30),
+		horizontalRuling(10, 110, 50),
+	}
+	runs := []orderedRun{
+		styledTableRun("Term", 12, 15, 32, 25, 700),
+		styledTableRun("Definition", 65, 15, 100, 25, 700),
+		styledTableRun("CLI", 12, 35, 25, 45, 400),
+		styledTableRun("Command line", 65, 35, 105, 45, 400),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  100,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
+	}
+	table := result.tables[0]
+	if len(table.rows) != 2 || len(table.columns) != 3 {
+		t.Fatalf("table shape = %dx%d, want 2x2", len(table.rows), len(table.columns)-1)
+	}
+}
+
+func TestDetectTablesSegmentsAdjacentHorizontalSchemas(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 130, 10),
+		horizontalRuling(10, 130, 30),
+		horizontalRuling(10, 130, 50),
+		horizontalRuling(10, 130, 70),
+		horizontalRuling(10, 130, 90),
+		horizontalRuling(10, 130, 110),
+	}
+	runs := []orderedRun{
+		styledTableRun("Key", 12, 15, 25, 25, 700),
+		styledTableRun("Value", 50, 15, 75, 25, 700),
+		styledTableRun("A", 12, 35, 20, 45, 400),
+		styledTableRun("One", 50, 35, 70, 45, 400),
+		styledTableRun("Next table", 12, 55, 55, 65, 700),
+		styledTableRun("ID", 12, 75, 22, 85, 700),
+		styledTableRun("Description", 40, 75, 80, 85, 700),
+		styledTableRun("State", 100, 75, 120, 85, 700),
+		styledTableRun("1", 12, 95, 18, 105, 400),
+		styledTableRun("Item", 40, 95, 60, 105, 400),
+		styledTableRun("Done", 100, 95, 120, 105, 400),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  140,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 2 {
+		t.Fatalf("table count = %d, want 2", len(result.tables))
+	}
+	if got := len(result.tables[0].columns) - 1; got != 2 {
+		t.Fatalf("first table column count = %d, want 2", got)
+	}
+	if got := len(result.tables[1].columns) - 1; got != 3 {
+		t.Fatalf("second table column count = %d, want 3", got)
+	}
+	if len(result.rejected) != 0 {
+		t.Fatalf("rejected regions = %#v, want none", result.rejected)
+	}
+}
+
 func TestDetectTablesInfersThreeColumnsAndKeepsWrappedCellText(t *testing.T) {
 	t.Parallel()
 

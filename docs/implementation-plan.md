@@ -246,7 +246,7 @@ semantic models established by earlier work.
       intentionally empty.
 - [x] Allow complete segmented grids to use structural header evidence when
       typography is not distinct.
-- [ ] Partition horizontal-only ruled regions into local schemas and support
+- [x] Partition horizontal-only ruled regions into local schemas and support
       strongly evidenced one-body-row tables.
 - [ ] Support sparse internal cells and multi-line content in locally inferred
       horizontal tables.
@@ -368,3 +368,4 @@ A task is complete when:
 | 2026-09-28 | Reconstructed horizontally ruled tables from repeated word-start anchors with strict support and row-termination checks. |
 | 2026-09-28 | Accepted ADR-0009 and preserved complete ruled tables with populated headers and intentionally empty body rows. |
 | 2026-09-28 | Used complete repeated-grid evidence to recover segmented ruled tables whose headers are not typographically distinct. |
+| 2026-09-28 | Partitioned horizontal-only ruled regions around local header bands and recovered strongly anchored one-body-row tables. |
