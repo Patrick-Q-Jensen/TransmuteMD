@@ -49,11 +49,75 @@ func TestDocumentValidate(t *testing.T) {
 				Start: 3,
 				Items: []document.ListItem{{Text: "Third item"}, {Text: "Fourth item"}},
 			},
+			&document.Table{
+				Rows: []document.TableRow{
+					{Cells: []document.TableCell{{Text: "Name"}, {Text: "Result"}}},
+					{Cells: []document.TableCell{{Text: "Case A"}, {Text: "Passed"}}},
+				},
+			},
 		},
 	}
 
 	if err := doc.Validate(); err != nil {
 		t.Fatalf("Validate() returned an unexpected error: %v", err)
+	}
+}
+
+func TestDocumentValidateRejectsInvalidTable(t *testing.T) {
+	t.Parallel()
+
+	var nilTable *document.Table
+	tests := []struct {
+		name  string
+		table *document.Table
+	}{
+		{name: "nil", table: nilTable},
+		{name: "no rows", table: &document.Table{}},
+		{
+			name: "one row",
+			table: &document.Table{Rows: []document.TableRow{
+				{Cells: []document.TableCell{{Text: "A"}, {Text: "B"}}},
+			}},
+		},
+		{
+			name: "one column",
+			table: &document.Table{Rows: []document.TableRow{
+				{Cells: []document.TableCell{{Text: "A"}}},
+				{Cells: []document.TableCell{{Text: "B"}}},
+			}},
+		},
+		{
+			name: "uneven rows",
+			table: &document.Table{Rows: []document.TableRow{
+				{Cells: []document.TableCell{{Text: "A"}, {Text: "B"}}},
+				{Cells: []document.TableCell{{Text: "C"}}},
+			}},
+		},
+		{
+			name: "empty header",
+			table: &document.Table{Rows: []document.TableRow{
+				{Cells: []document.TableCell{{Text: "A"}, {}}},
+				{Cells: []document.TableCell{{Text: "B"}, {Text: "C"}}},
+			}},
+		},
+		{
+			name: "multiline cell",
+			table: &document.Table{Rows: []document.TableRow{
+				{Cells: []document.TableCell{{Text: "A"}, {Text: "B"}}},
+				{Cells: []document.TableCell{{Text: "two\nlines"}, {Text: "C"}}},
+			}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			doc := document.Document{Blocks: []document.Block{test.table}}
+			if err := doc.Validate(); err == nil {
+				t.Fatalf("Validate() returned nil for invalid table %+v", test.table)
+			}
+		})
 	}
 }
 

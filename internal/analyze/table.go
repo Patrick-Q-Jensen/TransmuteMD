@@ -383,6 +383,44 @@ func orderedTableContent(
 	return rows, nil
 }
 
+func semanticTable(
+	ctx context.Context,
+	table detectedTable,
+) (*document.Table, error) {
+	content, err := orderedTableContent(ctx, table)
+	if err != nil {
+		return nil, err
+	}
+	result := &document.Table{Rows: make([]document.TableRow, len(content))}
+	for rowIndex, row := range content {
+		result.Rows[rowIndex].Cells = make([]document.TableCell, len(row))
+		for columnIndex, cell := range row {
+			result.Rows[rowIndex].Cells[columnIndex] = document.TableCell{
+				Text:  cell.text,
+				Links: cell.links,
+			}
+		}
+	}
+	return result, nil
+}
+
+func lineInsideTable(line textLine, table detectedTable) bool {
+	if len(line.runs) == 0 {
+		return false
+	}
+	for _, run := range line.runs {
+		centerX := (run.run.Bounds.Left + run.run.Bounds.Right) / 2
+		centerY := verticalCenter(run.run.Bounds)
+		if centerX <= table.bounds.Left ||
+			centerX >= table.bounds.Right ||
+			centerY <= table.bounds.Top ||
+			centerY >= table.bounds.Bottom {
+			return false
+		}
+	}
+	return true
+}
+
 func tableCellLines(
 	ctx context.Context,
 	runs []orderedRun,

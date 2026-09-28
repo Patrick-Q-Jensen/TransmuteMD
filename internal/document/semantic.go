@@ -185,6 +185,71 @@ type ListItem struct {
 	Children []List
 }
 
+// Table is a rectangular matrix whose first row is the header.
+type Table struct {
+	Rows []TableRow
+}
+
+func (*Table) isBlock() {}
+
+func (t *Table) validate() error {
+	if t == nil {
+		return errors.New("table must not be nil")
+	}
+	if len(t.Rows) < 2 {
+		return errors.New("table must contain a header and at least one body row")
+	}
+	columnCount := len(t.Rows[0].Cells)
+	if columnCount < 2 {
+		return errors.New("table must contain at least two columns")
+	}
+	for rowIndex, row := range t.Rows {
+		if len(row.Cells) != columnCount {
+			return fmt.Errorf(
+				"table row %d has %d cells, want %d",
+				rowIndex+1,
+				len(row.Cells),
+				columnCount,
+			)
+		}
+		for columnIndex, cell := range row.Cells {
+			if rowIndex == 0 && strings.TrimSpace(cell.Text) == "" {
+				return fmt.Errorf(
+					"table header cell %d text must not be empty",
+					columnIndex+1,
+				)
+			}
+			if strings.ContainsAny(cell.Text, "\r\n") {
+				return fmt.Errorf(
+					"table row %d cell %d text must be a single line",
+					rowIndex+1,
+					columnIndex+1,
+				)
+			}
+			if err := validateTextLinks(cell.Text, cell.Links); err != nil {
+				return fmt.Errorf(
+					"table row %d cell %d: %w",
+					rowIndex+1,
+					columnIndex+1,
+					err,
+				)
+			}
+		}
+	}
+	return nil
+}
+
+// TableRow is one row in a semantic table.
+type TableRow struct {
+	Cells []TableCell
+}
+
+// TableCell is plain single-line cell text with optional links.
+type TableCell struct {
+	Text  string
+	Links []TextLink
+}
+
 // TextLink identifies linked text by UTF-8 byte offsets.
 type TextLink struct {
 	Start  int

@@ -134,6 +134,8 @@ type textLine struct {
 	text        string
 	links       []document.TextLink
 	breakBefore bool
+	inTable     bool
+	table       *document.Table
 }
 
 type analyzedPage struct {
@@ -192,6 +194,17 @@ func analyzePageLines(
 		})
 	}
 
+	tables, err := detectTables(ctx, page.Rulings, runs)
+	if err != nil {
+		return nil, nil, err
+	}
+	tableBlocks := make([]*document.Table, len(tables))
+	for index, table := range tables {
+		tableBlocks[index], err = semanticTable(ctx, table)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 	slices.SortStableFunc(runs, compareRunsVertically)
 
 	lines := make([]textLine, 0, len(runs))
@@ -214,6 +227,20 @@ func analyzePageLines(
 	}
 	slices.SortStableFunc(lines, compareLines)
 	lines = orderColumns(lines)
+	tablePlaced := make([]bool, len(tables))
+	for lineIndex := range lines {
+		for tableIndex, table := range tables {
+			if !lineInsideTable(lines[lineIndex], table) {
+				continue
+			}
+			lines[lineIndex].inTable = true
+			if !tablePlaced[tableIndex] {
+				lines[lineIndex].table = tableBlocks[tableIndex]
+				tablePlaced[tableIndex] = true
+			}
+			break
+		}
+	}
 
 	var diagnostics []document.Diagnostic
 	if ambiguousLink {
@@ -824,12 +851,20 @@ func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if line.text == "" {
-			continue
-		}
 		if line.breakBefore {
 			flushParagraph()
 			flushList()
+		}
+		if line.inTable {
+			flushParagraph()
+			flushList()
+			if line.table != nil {
+				blocks = append(blocks, line.table)
+			}
+			continue
+		}
+		if line.text == "" {
+			continue
 		}
 		if contentsEntries[index] != nil {
 			flushParagraph()
@@ -1036,6 +1071,13 @@ func visitBlockLinks(
 			visitTextLinks(typed.Text, typed.Links, visit)
 		case *document.List:
 			visitListLinks(typed, visit)
+		case *document.Table:
+			for rowIndex := range typed.Rows {
+				for cellIndex := range typed.Rows[rowIndex].Cells {
+					cell := &typed.Rows[rowIndex].Cells[cellIndex]
+					visitTextLinks(cell.Text, cell.Links, visit)
+				}
+			}
 		default:
 			return fmt.Errorf("unsupported block type %T", block)
 		}

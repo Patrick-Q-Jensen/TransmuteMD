@@ -233,6 +233,9 @@ receive Markdown continuation indentation.
 Validated external semantic links render as Markdown links with escaped labels
 and destinations. Internal links render only when their named target matches
 an emitted anchor; unmatched page or named targets retain visible label text.
+Validated semantic tables render as pipe tables with the first row as the
+header. Cell text and links use the same escaping rules as other semantic
+content, including escaped literal pipes; empty body cells remain empty.
 
 ## 6. Package boundaries
 

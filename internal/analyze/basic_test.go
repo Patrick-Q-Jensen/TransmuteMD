@@ -1165,6 +1165,75 @@ func TestBasicAnalyzerReportsStructureFallbacks(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzerProducesSemanticTableInPageOrder(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					textRun("Before.", 10, 10, 50, 20),
+					textRun("Name", 15, 35, 40, 45),
+					textRun("Result", 115, 35, 145, 45),
+					textRun("Case A", 15, 55, 50, 65),
+					textRun("Passed", 115, 55, 150, 65),
+					textRun("After.", 10, 80, 45, 90),
+				},
+				Rulings: []document.Ruling{
+					{
+						Start: document.Point{X: 10, Y: 30},
+						End:   document.Point{X: 210, Y: 30},
+						Width: 1,
+					},
+					{
+						Start: document.Point{X: 10, Y: 50},
+						End:   document.Point{X: 210, Y: 50},
+						Width: 1,
+					},
+					{
+						Start: document.Point{X: 10, Y: 70},
+						End:   document.Point{X: 210, Y: 70},
+						Width: 1,
+					},
+					{
+						Start: document.Point{X: 110, Y: 30},
+						End:   document.Point{X: 110, Y: 70},
+						Width: 1,
+					},
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if len(result.Blocks) != 3 {
+		t.Fatalf("block count = %d, want 3", len(result.Blocks))
+	}
+	if got := result.Blocks[0].(*document.Paragraph).Text; got != "Before." {
+		t.Fatalf("first paragraph = %q, want Before.", got)
+	}
+	table, ok := result.Blocks[1].(*document.Table)
+	if !ok {
+		t.Fatalf("block 2 type = %T, want *document.Table", result.Blocks[1])
+	}
+	wantRows := []document.TableRow{
+		{Cells: []document.TableCell{{Text: "Name"}, {Text: "Result"}}},
+		{Cells: []document.TableCell{{Text: "Case A"}, {Text: "Passed"}}},
+	}
+	if !reflect.DeepEqual(table.Rows, wantRows) {
+		t.Fatalf("table rows = %#v, want %#v", table.Rows, wantRows)
+	}
+	if got := result.Blocks[2].(*document.Paragraph).Text; got != "After." {
+		t.Fatalf("last paragraph = %q, want After.", got)
+	}
+}
+
 func TestBasicAnalyzerReportsAmbiguousLinkAnnotations(t *testing.T) {
 	t.Parallel()
 

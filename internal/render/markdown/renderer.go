@@ -95,6 +95,20 @@ func validateBlocks(ctx context.Context, doc *document.Document) error {
 				return fmt.Errorf("render Markdown block %d: %w", index+1, err)
 			}
 			continue
+		case *document.Table:
+			for rowIndex, row := range typed.Rows {
+				for cellIndex, cell := range row.Cells {
+					if !utf8.ValidString(cell.Text) {
+						return fmt.Errorf(
+							"render Markdown block %d: table row %d cell %d: text is not valid UTF-8",
+							index+1,
+							rowIndex+1,
+							cellIndex+1,
+						)
+					}
+				}
+			}
+			continue
 		default:
 			return fmt.Errorf(
 				"render Markdown block %d: unsupported block type %T",
@@ -152,9 +166,50 @@ func renderBlock(
 		return heading, nil
 	case *document.List:
 		return renderList(ctx, typed, anchors)
+	case *document.Table:
+		return renderTable(ctx, typed, anchors)
 	default:
 		return "", fmt.Errorf("unsupported block type %T", block)
 	}
+}
+
+func renderTable(
+	ctx context.Context,
+	table *document.Table,
+	anchors map[string]struct{},
+) (string, error) {
+	var result strings.Builder
+	for rowIndex, row := range table.Rows {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		if rowIndex > 0 {
+			result.WriteByte('\n')
+		}
+		result.WriteByte('|')
+		for cellIndex, cell := range row.Cells {
+			content, err := renderLinkedText(ctx, cell.Text, cell.Links, anchors)
+			if err != nil {
+				return "", fmt.Errorf(
+					"render table row %d cell %d: %w",
+					rowIndex+1,
+					cellIndex+1,
+					err,
+				)
+			}
+			result.WriteByte(' ')
+			result.WriteString(content)
+			result.WriteString(" |")
+		}
+		if rowIndex == 0 {
+			result.WriteByte('\n')
+			result.WriteByte('|')
+			for range row.Cells {
+				result.WriteString(" --- |")
+			}
+		}
+	}
+	return result.String(), nil
 }
 
 func renderList(

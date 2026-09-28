@@ -194,6 +194,59 @@ func TestRendererWritesResolvedInternalLinkAndAnchor(t *testing.T) {
 	}
 }
 
+func TestRendererWritesMarkdownTable(t *testing.T) {
+	t.Parallel()
+
+	doc := &document.Document{
+		Blocks: []document.Block{
+			&document.Table{
+				Rows: []document.TableRow{
+					{
+						Cells: []document.TableCell{
+							{Text: "Name"},
+							{Text: "Expected | result"},
+						},
+					},
+					{
+						Cells: []document.TableCell{
+							{Text: "Case *A*"},
+							{
+								Text: "Passed",
+								Links: []document.TextLink{
+									{
+										Start: 0,
+										End:   6,
+										Target: document.LinkTarget{
+											Kind: document.LinkTargetExternal,
+											URI:  "https://example.test/result",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	before := cloneDocument(*doc)
+	var output bytes.Buffer
+
+	err := markdown.NewRenderer().Render(context.Background(), doc, &output)
+	if err != nil {
+		t.Fatalf("Render() returned an unexpected error: %v", err)
+	}
+	want := "| Name | Expected \\| result |\n" +
+		"| --- | --- |\n" +
+		"| Case \\*A\\* | [Passed](https://example.test/result) |\n"
+	if got := output.String(); got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+	if !reflect.DeepEqual(*doc, before) {
+		t.Fatal("Render() mutated its input document")
+	}
+}
+
 func TestRendererEscapesMarkdownAndNormalizesLineEndings(t *testing.T) {
 	t.Parallel()
 
@@ -292,6 +345,24 @@ func TestRendererRejectsInvalidInputBeforeWriting(t *testing.T) {
 											{Text: string([]byte{0xff})},
 										},
 									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "invalid UTF-8 table cell",
+			doc: &document.Document{
+				Blocks: []document.Block{
+					&document.Table{
+						Rows: []document.TableRow{
+							{Cells: []document.TableCell{{Text: "A"}, {Text: "B"}}},
+							{
+								Cells: []document.TableCell{
+									{Text: string([]byte{0xff})},
+									{Text: "C"},
 								},
 							},
 						},
@@ -421,6 +492,27 @@ func cloneDocument(doc document.Document) document.Document {
 		case *document.List:
 			copied := cloneList(*typed)
 			clone.Blocks[index] = &copied
+		case *document.Table:
+			copied := cloneTable(*typed)
+			clone.Blocks[index] = &copied
+		}
+	}
+	return clone
+}
+
+func cloneTable(table document.Table) document.Table {
+	clone := table
+	clone.Rows = append([]document.TableRow(nil), table.Rows...)
+	for rowIndex := range clone.Rows {
+		clone.Rows[rowIndex].Cells = append(
+			[]document.TableCell(nil),
+			table.Rows[rowIndex].Cells...,
+		)
+		for cellIndex := range clone.Rows[rowIndex].Cells {
+			clone.Rows[rowIndex].Cells[cellIndex].Links = append(
+				[]document.TextLink(nil),
+				table.Rows[rowIndex].Cells[cellIndex].Links...,
+			)
 		}
 	}
 	return clone
