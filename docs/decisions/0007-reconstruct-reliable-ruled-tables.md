@@ -1,7 +1,8 @@
 # ADR-0007: Reconstruct reliable ruled tables
 
 - **Status:** Superseded in part by
-  [ADR-0008](0008-infer-columns-in-horizontally-ruled-tables.md)
+  [ADR-0008](0008-infer-columns-in-horizontally-ruled-tables.md) and
+  [ADR-0009](0009-recover-sparse-ruled-tables.md)
 - **Date:** 2026-09-28
 - **Supersedes:** The table portion of
   [ADR-0005](0005-preserve-ambiguous-tables-and-code-as-text.md)
