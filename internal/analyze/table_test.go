@@ -363,6 +363,174 @@ func TestDetectTablesKeepsAdjacentShortSchemasAndLinksIndependent(t *testing.T) 
 	}
 }
 
+func TestDetectTablesSplitsAlignedRecordsWithinTallHorizontalBand(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 130, 10),
+		horizontalRuling(10, 130, 30),
+		horizontalRuling(10, 130, 140),
+	}
+	runs := []orderedRun{
+		styledTableRun("Group", 12, 15, 32, 25, 700),
+		styledTableRun("Change", 40, 15, 70, 25, 700),
+		styledTableRun("Audit", 90, 15, 115, 25, 700),
+		styledTableRun("A", 12, 35, 20, 45, 400),
+		styledTableRun("Initial", 40, 35, 65, 45, 400),
+		styledTableRun("First update", 40, 65, 75, 75, 400),
+		styledTableRun("2026-01-01", 90, 65, 125, 75, 400),
+		styledTableRun("Owner A", 90, 78, 120, 88, 400),
+		styledTableRun("Second update", 40, 105, 80, 115, 400),
+		styledTableRun("2026-02-01", 90, 105, 125, 115, 400),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  170,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
+	}
+	content, err := orderedTableContent(context.Background(), result.tables[0])
+	if err != nil {
+		t.Fatalf("orderedTableContent() returned an unexpected error: %v", err)
+	}
+	want := [][]tableCellContent{
+		{{text: "Group"}, {text: "Change"}, {text: "Audit"}},
+		{{text: "A"}, {text: "Initial"}, {}},
+		{{}, {text: "First update"}, {text: "2026-01-01 Owner A"}},
+		{{}, {text: "Second update"}, {text: "2026-02-01"}},
+	}
+	if !reflect.DeepEqual(content, want) {
+		t.Fatalf("table content = %#v, want %#v", content, want)
+	}
+}
+
+func TestDetectTablesKeepsStackedHeaderInOneSemanticRow(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 130, 10),
+		horizontalRuling(10, 130, 40),
+		horizontalRuling(10, 130, 70),
+	}
+	runs := []orderedRun{
+		styledTableRun("ID", 12, 15, 22, 25, 700),
+		styledTableRun("Primary", 40, 15, 70, 25, 700),
+		styledTableRun("Secondary", 40, 27, 75, 37, 700),
+		styledTableRun("Date", 90, 15, 110, 25, 700),
+		styledTableRun("Owner", 90, 27, 115, 37, 700),
+		styledTableRun("A", 12, 45, 20, 55, 400),
+		styledTableRun("Updated", 40, 45, 70, 55, 400),
+		styledTableRun("Today", 90, 45, 115, 55, 400),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  100,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
+	}
+	content, err := orderedTableContent(context.Background(), result.tables[0])
+	if err != nil {
+		t.Fatalf("orderedTableContent() returned an unexpected error: %v", err)
+	}
+	if len(content) != 2 {
+		t.Fatalf("semantic row count = %d, want 2", len(content))
+	}
+	if got, want := content[0][1].text, "Primary Secondary"; got != want {
+		t.Fatalf("stacked header text = %q, want %q", got, want)
+	}
+	if got, want := content[0][2].text, "Date Owner"; got != want {
+		t.Fatalf("stacked header text = %q, want %q", got, want)
+	}
+}
+
+func TestDetectTablesKeepsCloseWrappedBodyLinesInOneRow(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 130, 10),
+		horizontalRuling(10, 130, 30),
+		horizontalRuling(10, 130, 70),
+	}
+	runs := []orderedRun{
+		styledTableRun("ID", 12, 15, 22, 25, 700),
+		styledTableRun("Description", 40, 15, 75, 25, 700),
+		styledTableRun("Result", 90, 15, 115, 25, 700),
+		styledTableRun("A", 12, 35, 20, 45, 400),
+		styledTableRun("Long", 40, 35, 60, 45, 400),
+		styledTableRun("Passed", 90, 35, 115, 45, 400),
+		styledTableRun("value", 40, 47, 60, 57, 400),
+		styledTableRun("today", 90, 47, 112, 57, 400),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  100,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
+	}
+	content, err := orderedTableContent(context.Background(), result.tables[0])
+	if err != nil {
+		t.Fatalf("orderedTableContent() returned an unexpected error: %v", err)
+	}
+	if len(content) != 2 {
+		t.Fatalf("semantic row count = %d, want 2", len(content))
+	}
+	if got, want := content[1][1].text, "Long value"; got != want {
+		t.Fatalf("wrapped body text = %q, want %q", got, want)
+	}
+	if got, want := content[1][2].text, "Passed today"; got != want {
+		t.Fatalf("wrapped body text = %q, want %q", got, want)
+	}
+}
+
+func TestDetectTablesRejectsUnsynchronizedRecordsWithinTallBand(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 130, 10),
+		horizontalRuling(10, 130, 30),
+		horizontalRuling(10, 130, 140),
+	}
+	runs := []orderedRun{
+		styledTableRun("Group", 12, 15, 32, 25, 700),
+		styledTableRun("Change", 40, 15, 70, 25, 700),
+		styledTableRun("Audit", 90, 15, 115, 25, 700),
+		styledTableRun("A", 12, 35, 20, 45, 400),
+		styledTableRun("First", 40, 35, 60, 45, 400),
+		styledTableRun("2026-01-01", 90, 55, 125, 65, 400),
+		styledTableRun("Second", 40, 80, 65, 90, 400),
+		styledTableRun("2026-02-01", 90, 100, 125, 110, 400),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  170,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 0 {
+		t.Fatalf("table count = %d, want 0", len(result.tables))
+	}
+	if len(result.rejected) != 1 {
+		t.Fatalf("rejected region count = %d, want 1", len(result.rejected))
+	}
+}
+
 func TestDetectTablesInfersThreeColumnsAndKeepsWrappedCellText(t *testing.T) {
 	t.Parallel()
 

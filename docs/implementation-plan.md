@@ -264,7 +264,7 @@ but does not preserve their source row and column relationships accurately.
 - [x] Preserve adjacent short horizontal tables as independent schemas,
       including their header-to-body column boundaries and links, without
       relying on known labels or section numbers.
-- [ ] Reconstruct multi-line or stacked table headers and multiple logical
+- [x] Reconstruct multi-line or stacked table headers and multiple logical
       records within a tall ruled band without collapsing them into one
       Markdown row or combining distinct source columns.
 - [ ] Define when merged or spanning source cells can be flattened into a
