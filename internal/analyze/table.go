@@ -117,7 +117,7 @@ func detectTables(
 				assigned = assignTableRuns(&table, runs)
 			}
 			if !assigned ||
-				table.requireHeaderStyle && !hasDistinctTableHeader(table) {
+				table.requireHeaderStyle && !hasReliableTableHeader(table) {
 				result.rejected = append(result.rejected, table.bounds)
 				continue
 			}
@@ -742,6 +742,26 @@ func hasDistinctTableHeader(table detectedTable) bool {
 	slices.Sort(bodyWeights)
 	bodyWeight := bodyWeights[(len(bodyWeights)-1)/2]
 	return headerWeight >= 600 && headerWeight >= bodyWeight+100
+}
+
+func hasReliableTableHeader(table detectedTable) bool {
+	if hasDistinctTableHeader(table) {
+		return true
+	}
+	if table.horizontal {
+		return false
+	}
+	for rowIndex, row := range table.rows {
+		if rowIndex == 0 {
+			continue
+		}
+		for _, cell := range row {
+			if tableCellHasText(cell) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func tableRowCoordinates(table *detectedTable) []float64 {

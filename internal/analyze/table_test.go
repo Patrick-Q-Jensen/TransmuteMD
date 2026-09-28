@@ -148,6 +148,44 @@ func TestDetectTablesSegmentsStableGridAfterFullWidthRow(t *testing.T) {
 	}
 }
 
+func TestDetectTablesUsesCompleteGridWhenSegmentHeaderIsRegularWeight(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 110, 10),
+		horizontalRuling(10, 110, 30),
+		horizontalRuling(10, 110, 50),
+		horizontalRuling(10, 110, 70),
+		horizontalRuling(10, 110, 90),
+		verticalRuling(40, 30, 90),
+	}
+	runs := []orderedRun{
+		styledTableRun("Section", 15, 15, 50, 25, 700),
+		styledTableRun("Choice", 15, 35, 35, 45, 400),
+		styledTableRun("Result", 45, 35, 75, 45, 400),
+		styledTableRun("Passed", 45, 55, 75, 65, 400),
+		styledTableRun("Failed", 45, 75, 75, 85, 400),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  120,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
+	}
+	table := result.tables[0]
+	if table.bounds.Top != 30 || table.bounds.Bottom != 90 {
+		t.Fatalf("table bounds = %+v, want top 30 and bottom 90", table.bounds)
+	}
+	if tableCellHasText(table.rows[1][0]) || tableCellHasText(table.rows[2][0]) {
+		t.Fatal("blank choice cells unexpectedly contain text")
+	}
+}
+
 func TestDetectTablesInfersRepeatedColumnsWithinHorizontalRules(t *testing.T) {
 	t.Parallel()
 

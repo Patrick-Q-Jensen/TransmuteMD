@@ -201,8 +201,9 @@ independently ordered into lines before wrapped text is joined, so content
 cannot flow across neighboring columns. Composite ruled regions are
 partitioned into maximal adjacent row bands with the same vertical-boundary
 signature. A table carved from a mixed-signature region additionally requires
-a bold header distinct from its body, or a bold populated header when all
-body rows are empty; full-width heading or separator rows remain outside the
+either a header distinct from its body or populated body cells in the complete
+repeated grid. A segmented grid with no body text still requires a bold
+populated header. Full-width heading or separator rows remain outside the
 table. Cells are then traversed in row-major order.
 When internal vertical rules are absent, horizontal rules may define rows and
 repeated word-start coordinates may define columns under ADR-0008. Inferred
