@@ -354,6 +354,45 @@ func TestDetectTablesInfersThreeColumnsAndKeepsWrappedCellText(t *testing.T) {
 	}
 }
 
+func TestDetectTablesInfersSparseInternalColumnInShortTable(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 130, 10),
+		horizontalRuling(10, 130, 30),
+		horizontalRuling(10, 130, 55),
+		horizontalRuling(10, 130, 80),
+	}
+	runs := []orderedRun{
+		styledTableRun("ID", 12, 15, 22, 25, 700),
+		styledTableRun("Scope", 40, 15, 65, 25, 700),
+		styledTableRun("Result", 95, 15, 120, 25, 700),
+		styledTableRun("A", 12, 35, 18, 45, 400),
+		styledTableRun("All", 40, 35, 52, 45, 400),
+		styledTableRun("Passed", 95, 35, 120, 45, 400),
+		styledTableRun("B", 12, 60, 18, 70, 400),
+		styledTableRun("Pending", 95, 60, 120, 70, 400),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  110,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
+	}
+	table := result.tables[0]
+	if len(table.rows) != 3 || len(table.columns) != 4 {
+		t.Fatalf("table shape = %dx%d, want 3x3", len(table.rows), len(table.columns)-1)
+	}
+	if tableCellHasText(table.rows[2][1]) {
+		t.Fatal("sparse internal body cell unexpectedly contains text")
+	}
+}
+
 func TestDetectTablesRejectsWeakHorizontalAnchorEvidence(t *testing.T) {
 	t.Parallel()
 

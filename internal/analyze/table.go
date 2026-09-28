@@ -14,6 +14,7 @@ const (
 	minimumTableCellHeight           = 4.0
 	minimumTableCellWidth            = 8.0
 	minimumHorizontalTableBodyRows   = 1
+	minimumRowsBeforeTableTruncation = 2
 	horizontalAnchorBodySupportRatio = 0.75
 	maximumFirstAnchorInset          = 8.0
 )
@@ -620,10 +621,9 @@ func repeatedTableAnchors(
 		}
 	}
 
-	requiredBodyRows := int(math.Ceil(
-		float64(len(bandGroup.bands)-1) * horizontalAnchorBodySupportRatio,
-	))
-	requiredBodyRows = max(requiredBodyRows, minimumHorizontalTableBodyRows)
+	requiredBodyRows := requiredHorizontalAnchorBodyRows(
+		len(bandGroup.bands) - 1,
+	)
 	var anchors []float64
 	for _, cluster := range clusters {
 		if _, inHeader := cluster.rows[0]; !inHeader {
@@ -641,6 +641,16 @@ func repeatedTableAnchors(
 	}
 	slices.Sort(anchors)
 	return mergeCoordinates(anchors), nil
+}
+
+func requiredHorizontalAnchorBodyRows(bodyRows int) int {
+	if bodyRows <= 2 {
+		return minimumHorizontalTableBodyRows
+	}
+	return max(
+		int(math.Ceil(float64(bodyRows)*horizontalAnchorBodySupportRatio)),
+		minimumRowsBeforeTableTruncation,
+	)
 }
 
 func tableBandWordStarts(
@@ -731,6 +741,10 @@ func assignHorizontalTableRuns(
 		end++
 	}
 	if end < minimumHorizontalTableBodyRows+1 {
+		return false
+	}
+	if end < len(table.rows) &&
+		end < minimumRowsBeforeTableTruncation+1 {
 		return false
 	}
 	table.rows = table.rows[:end]

@@ -211,10 +211,13 @@ When internal vertical rules are absent, horizontal rules may define rows and
 repeated word-start coordinates may define columns under ADR-0008. A ruled
 region is partitioned into local, bold-header-led candidates so adjacent
 horizontal-only tables do not dilute one another's column evidence. Inferred
-starts must occur in the header and at least 75 percent of body rows, with a
-distinct header and both edge cells populated in each accepted body row. A
-one-body-row candidate requires every inferred start to occur in that row. A
-conflicting or incomplete row terminates the inferred table.
+starts must occur in the header and receive body-row support, with a distinct
+header and both edge cells populated in each accepted body row. Candidates
+with more than two body rows require support in at least 75 percent of those
+rows. One- and two-body-row candidates may preserve sparse internal cells
+when each inferred start occurs in at least one body row. A conflicting or
+incomplete row can terminate a longer table, but at least two valid body rows
+must precede that truncation.
 Accepted table lines are removed from paragraph grouping without changing the
 surrounding page order. Rejected ruled regions and separate runs of strongly
 aligned table-like text remain ordinary text and produce one diagnostic per
