@@ -186,6 +186,197 @@ func TestDetectTablesUsesCompleteGridWhenSegmentHeaderIsRegularWeight(t *testing
 	}
 }
 
+func TestDetectTablesUnfoldsAdjacentStackedFieldBands(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 130, 10),
+		horizontalRuling(10, 130, 40),
+		horizontalRuling(10, 130, 70),
+		horizontalRuling(10, 130, 100),
+		verticalRuling(60, 10, 100),
+		verticalRuling(90, 10, 40),
+		verticalRuling(85, 70, 100),
+	}
+	runs := []orderedRun{
+		tableRun("Prepared", 12, 14, 35, 20),
+		tableRun("State", 62, 14, 80, 20),
+		tableRun("Level", 92, 14, 112, 20),
+		tableRun("Date and owner", 12, 27, 48, 34),
+		tableRun("Approved", 62, 27, 84, 34),
+		tableRun("Internal", 92, 27, 115, 34),
+		tableRun("Approved by", 12, 44, 45, 50),
+		tableRun("Kind", 62, 44, 78, 50),
+		tableRun("Date and owner", 12, 57, 48, 64),
+		tableRun("Record", 62, 57, 82, 64),
+		tableRun("Owner", 12, 74, 32, 80),
+		tableRun("Revision", 62, 74, 82, 80),
+		tableRun("Page", 87, 74, 105, 80),
+		tableRun("Team", 12, 87, 30, 94),
+		tableRun("B", 62, 87, 68, 94),
+		tableRun("1/1", 87, 87, 100, 94),
+	}
+
+	result, err := detectTables(context.Background(), document.Page{
+		Height:  140,
+		Rulings: rulings,
+	}, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 3 {
+		t.Fatalf("table count = %d, want 3", len(result.tables))
+	}
+	wantColumns := []int{3, 2, 3}
+	for index, want := range wantColumns {
+		if got := len(result.tables[index].columns) - 1; got != want {
+			t.Fatalf("table %d column count = %d, want %d", index, got, want)
+		}
+		if got := len(result.tables[index].rows); got != 2 {
+			t.Fatalf("table %d row count = %d, want 2", index, got)
+		}
+	}
+	content, err := orderedTableContent(context.Background(), result.tables[0])
+	if err != nil {
+		t.Fatalf("orderedTableContent() returned an unexpected error: %v", err)
+	}
+	want := [][]tableCellContent{
+		{{text: "Prepared"}, {text: "State"}, {text: "Level"}},
+		{{text: "Date and owner"}, {text: "Approved"}, {text: "Internal"}},
+	}
+	if !reflect.DeepEqual(content, want) {
+		t.Fatalf("first table content = %#v, want %#v", content, want)
+	}
+}
+
+func TestDetectTablesUnfoldsStandaloneStackedFieldBand(t *testing.T) {
+	t.Parallel()
+
+	target := document.LinkTarget{
+		Kind: document.LinkTargetExternal,
+		URI:  "https://example.com/value",
+	}
+	result, err := detectTables(context.Background(), document.Page{
+		Height: 100,
+		Rulings: []document.Ruling{
+			horizontalRuling(10, 110, 20),
+			horizontalRuling(10, 110, 50),
+			verticalRuling(60, 20, 50),
+		},
+	}, []orderedRun{
+		tableRun("Label A", 12, 24, 35, 30),
+		tableRun("Label B", 62, 24, 85, 30),
+		tableRun("Value A", 12, 37, 35, 44),
+		linkedStyledTableRun("Value B", 62, 37, 85, 44, 0, target),
+	})
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
+	}
+	if got := len(result.tables[0].rows); got != 2 {
+		t.Fatalf("row count = %d, want 2", got)
+	}
+	table, err := semanticTable(context.Background(), result.tables[0])
+	if err != nil {
+		t.Fatalf("semanticTable() returned an unexpected error: %v", err)
+	}
+	wantLinks := []document.TextLink{{
+		Start:  0,
+		End:    len("Value B"),
+		Target: target,
+	}}
+	if got := table.Rows[1].Cells[1].Links; !reflect.DeepEqual(got, wantLinks) {
+		t.Fatalf("value links = %#v, want %#v", got, wantLinks)
+	}
+}
+
+func TestTableFromStackedFieldBandRejectsAmbiguousGeometry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		columns []float64
+		runs    []orderedRun
+	}{
+		{
+			name:    "single physical cell",
+			columns: []float64{10, 110},
+			runs: []orderedRun{
+				tableRun("Label", 12, 14, 30, 20),
+				tableRun("Value", 12, 27, 30, 33),
+			},
+		},
+		{
+			name:    "missing value",
+			columns: []float64{10, 60, 110},
+			runs: []orderedRun{
+				tableRun("Left", 12, 14, 30, 20),
+				tableRun("A", 12, 27, 20, 33),
+				tableRun("Right", 62, 14, 85, 20),
+			},
+		},
+		{
+			name:    "extra line",
+			columns: []float64{10, 60, 110},
+			runs: []orderedRun{
+				tableRun("Left", 12, 12, 30, 18),
+				tableRun("A", 12, 24, 20, 30),
+				tableRun("Extra", 12, 36, 35, 42),
+				tableRun("Right", 62, 12, 85, 18),
+				tableRun("B", 62, 24, 70, 30),
+			},
+		},
+		{
+			name:    "unsynchronized values",
+			columns: []float64{10, 60, 110},
+			runs: []orderedRun{
+				tableRun("Left", 12, 14, 30, 20),
+				tableRun("A", 12, 27, 20, 33),
+				tableRun("Right", 62, 14, 85, 20),
+				tableRun("B", 62, 35, 70, 41),
+			},
+		},
+		{
+			name:    "boundary crossing",
+			columns: []float64{10, 60, 110},
+			runs: []orderedRun{
+				tableRun("Crossing", 50, 14, 70, 20),
+				tableRun("A", 12, 27, 20, 33),
+				tableRun("Right", 62, 14, 85, 20),
+				tableRun("B", 62, 27, 70, 33),
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			table, ok, err := tableFromStackedFieldBand(
+				context.Background(),
+				horizontalSegmentGroup{left: 10, right: 110},
+				tableBandGroup{
+					bands: []tableRowBand{{
+						top:     10,
+						bottom:  45,
+						columns: test.columns,
+					}},
+					columns: test.columns,
+				},
+				test.runs,
+			)
+			if err != nil {
+				t.Fatalf("tableFromStackedFieldBand() returned an unexpected error: %v", err)
+			}
+			if ok {
+				t.Fatalf("tableFromStackedFieldBand() = %#v, true; want no table", table)
+			}
+		})
+	}
+}
+
 func TestDetectTablesInfersRepeatedColumnsWithinHorizontalRules(t *testing.T) {
 	t.Parallel()
 

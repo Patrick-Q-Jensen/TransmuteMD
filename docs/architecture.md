@@ -121,7 +121,9 @@ horizontal gaps. Consistent small gaps between individually positioned glyphs
 are treated as character tracking rather than word boundaries, while explicit
 spaces and materially larger gaps still separate words. Nearby lines become
 one plain paragraph, while larger vertical gaps and page boundaries start a
-new paragraph. Zero-area whitespace-only control runs are ignored.
+new paragraph. Longer tracked runs use upper-quartile gap evidence so normal
+glyph-width variation does not split a word inside an isolated table cell.
+Zero-area whitespace-only control runs are ignored.
 
 Wrapped-line analysis also uses the observed page text margins. A new
 first-line indent or a short sentence-ending line starts a paragraph even
@@ -218,6 +220,13 @@ rows. One- and two-body-row candidates may preserve sparse internal cells
 when each inferred start occurs in at least one body row. A conflicting or
 incomplete row can terminate a longer table, but at least two valid body rows
 must precede that truncation.
+A single physically ruled row band may be unfolded into a two-row Markdown
+table when it has at least two complete vertical cells and every cell contains
+exactly two non-empty text lines. The first lines must align across all cells
+to form the header, and the second lines must align to form the value row.
+Adjacent bands with different vertical-boundary signatures remain independent
+tables. Missing, extra, crossing, or unsynchronized lines reject this pattern
+rather than inventing field relationships.
 Within an accepted horizontal table, a tall physical body band may be
 flattened into multiple semantic rows only when separated line groups expose
 two or more record starts aligned across at least two inferred columns.
@@ -245,7 +254,9 @@ ruled-table acceptance is governed by
 sparse-table extensions governed by
 [ADR-0009](decisions/0009-recover-sparse-ruled-tables.md) and conservative
 tall-band flattening governed by
-[ADR-0010](decisions/0010-flatten-synchronized-table-records.md).
+[ADR-0010](decisions/0010-flatten-synchronized-table-records.md). Stacked
+field-band unfolding is governed by
+[ADR-0011](decisions/0011-unfold-stacked-field-bands.md).
 The initial analyzer reports table-like text only after three adjacent lines
 show multiple large intra-line gaps. It reports code-like text only after two
 aligned adjacent lines consistently use recognized monospaced font names.

@@ -78,6 +78,29 @@ func detectTables(
 		if err := ctx.Err(); err != nil {
 			return tableDetection{}, err
 		}
+		if len(group.lines) == 2 {
+			bandGroups := tableBandGroups(group, vertical)
+			if len(bandGroups) != 1 {
+				continue
+			}
+			bounds := tableBandGroupBounds(group, bandGroups[0])
+			if isPageFurnitureTable(bounds, page.Height) {
+				continue
+			}
+			table, ok, err := tableFromStackedFieldBand(
+				ctx,
+				group,
+				bandGroups[0],
+				runs,
+			)
+			if err != nil {
+				return tableDetection{}, err
+			}
+			if ok {
+				result.tables = append(result.tables, table)
+			}
+			continue
+		}
 		bounds, candidate := tableCandidateBounds(group)
 		if !candidate || isPageFurnitureTable(bounds, page.Height) {
 			continue
@@ -96,6 +119,19 @@ func detectTables(
 					result.rejected = append(result.rejected, table.bounds)
 					continue
 				}
+				result.tables = append(result.tables, table)
+				continue
+			}
+			table, ok, stackedErr := tableFromStackedFieldBand(
+				ctx,
+				group,
+				bandGroup,
+				runs,
+			)
+			if stackedErr != nil {
+				return tableDetection{}, stackedErr
+			}
+			if ok {
 				result.tables = append(result.tables, table)
 				continue
 			}
@@ -453,7 +489,7 @@ func tableBandGroups(
 	group horizontalSegmentGroup,
 	vertical []tableSegment,
 ) []tableBandGroup {
-	if len(group.lines) < 3 {
+	if len(group.lines) < 2 {
 		return nil
 	}
 	slices.SortStableFunc(group.lines, func(left, right tableSegment) int {
@@ -551,6 +587,108 @@ func tableFromBandGroup(
 		rows:               rows,
 		requireHeaderStyle: segmented,
 	}, true
+}
+
+func tableFromStackedFieldBand(
+	ctx context.Context,
+	group horizontalSegmentGroup,
+	bandGroup tableBandGroup,
+	runs []orderedRun,
+) (detectedTable, bool, error) {
+	if len(bandGroup.bands) != 1 || len(bandGroup.columns) < 3 {
+		return detectedTable{}, false, nil
+	}
+	band := bandGroup.bands[0]
+	cellRuns := make([][]orderedRun, len(bandGroup.columns)-1)
+	for _, run := range runs {
+		centerX := (run.run.Bounds.Left + run.run.Bounds.Right) / 2
+		centerY := verticalCenter(run.run.Bounds)
+		if centerX <= group.left ||
+			centerX >= group.right ||
+			centerY <= band.top ||
+			centerY >= band.bottom {
+			continue
+		}
+		column := coordinateInterval(centerX, bandGroup.columns)
+		if column < 0 ||
+			crossesInternalBoundary(run.run.Bounds, bandGroup.columns) ||
+			run.run.Bounds.Top < band.top-tableCoordinateTolerance ||
+			run.run.Bounds.Bottom > band.bottom+tableCoordinateTolerance {
+			return detectedTable{}, false, nil
+		}
+		cellRuns[column] = append(cellRuns[column], run)
+	}
+
+	cellLines := make([][]textLine, len(cellRuns))
+	headerBottom := math.Inf(-1)
+	valueTop := math.Inf(1)
+	for columnIndex, contained := range cellRuns {
+		lines, err := tableCellLines(ctx, contained)
+		if err != nil {
+			return detectedTable{}, false, err
+		}
+		if len(lines) != 2 ||
+			strings.TrimSpace(lines[0].text) == "" ||
+			strings.TrimSpace(lines[1].text) == "" {
+			return detectedTable{}, false, nil
+		}
+		cellLines[columnIndex] = lines
+		headerBottom = math.Max(headerBottom, lines[0].bottom)
+		valueTop = math.Min(valueTop, lines[1].top)
+	}
+	if headerBottom >= valueTop-tableCoordinateTolerance ||
+		!stackedFieldLinesAligned(cellLines, 0) ||
+		!stackedFieldLinesAligned(cellLines, 1) {
+		return detectedTable{}, false, nil
+	}
+
+	rowBoundary := (headerBottom + valueTop) / 2
+	rows := make([][]detectedTableCell, 2)
+	for rowIndex := range rows {
+		rows[rowIndex] = make([]detectedTableCell, len(cellRuns))
+		for columnIndex := range rows[rowIndex] {
+			top := band.top
+			bottom := rowBoundary
+			if rowIndex == 1 {
+				top = rowBoundary
+				bottom = band.bottom
+			}
+			rows[rowIndex][columnIndex] = detectedTableCell{
+				bounds: document.Rectangle{
+					Left:   bandGroup.columns[columnIndex],
+					Top:    top,
+					Right:  bandGroup.columns[columnIndex+1],
+					Bottom: bottom,
+				},
+				runs: slices.Clone(cellLines[columnIndex][rowIndex].runs),
+			}
+		}
+	}
+	return detectedTable{
+		bounds: document.Rectangle{
+			Left:   group.left,
+			Top:    band.top,
+			Right:  group.right,
+			Bottom: band.bottom,
+		},
+		columns: bandGroup.columns,
+		rows:    rows,
+	}, true, nil
+}
+
+func stackedFieldLinesAligned(cellLines [][]textLine, lineIndex int) bool {
+	minimumTop := math.Inf(1)
+	maximumTop := math.Inf(-1)
+	minimumBottom := math.Inf(1)
+	maximumBottom := math.Inf(-1)
+	for _, lines := range cellLines {
+		minimumTop = math.Min(minimumTop, lines[lineIndex].top)
+		maximumTop = math.Max(maximumTop, lines[lineIndex].top)
+		minimumBottom = math.Min(minimumBottom, lines[lineIndex].bottom)
+		maximumBottom = math.Max(maximumBottom, lines[lineIndex].bottom)
+	}
+	return maximumTop-minimumTop <= tableCoordinateTolerance &&
+		maximumBottom-minimumBottom <= tableCoordinateTolerance
 }
 
 type tableAnchorCluster struct {

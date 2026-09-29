@@ -3,7 +3,8 @@
 - **Status:** Superseded in part by
   [ADR-0008](0008-infer-columns-in-horizontally-ruled-tables.md) and
   [ADR-0009](0009-recover-sparse-ruled-tables.md), and
-  [ADR-0010](0010-flatten-synchronized-table-records.md)
+  [ADR-0010](0010-flatten-synchronized-table-records.md), and
+  [ADR-0011](0011-unfold-stacked-field-bands.md)
 - **Date:** 2026-09-28
 - **Supersedes:** The table portion of
   [ADR-0005](0005-preserve-ambiguous-tables-and-code-as-text.md)

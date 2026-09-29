@@ -274,6 +274,19 @@ but does not preserve their source row and column relationships accurately.
       and verify sections 11 and 12 against the private sample without
       committing that document.
 
+### Group 4 follow-up: Stacked document metadata
+
+- [x] Inspect the first-page ruled metadata and approval regions in the
+      private sample and distinguish their local physical schemas.
+- [x] Unfold a single ruled band into a header and value row only when every
+      physical cell has exactly two synchronized, non-empty text lines.
+- [x] Preserve adjacent field bands with different column boundaries as
+      independent Markdown tables.
+- [x] Retain plain-text behavior for single-cell, incomplete, extra-line, or
+      unsynchronized field bands.
+- [x] Add engine-neutral tests and verify the private sample without
+      committing its PDF or generated Markdown.
+
 ### Group 5: Forms and document fields
 
 - [ ] Define which checkboxes, signature fields, blank result cells, and ruled
@@ -395,3 +408,4 @@ A task is complete when:
 | 2026-09-28 | Recovered short horizontal tables with sparse internal cells while retaining stricter support and truncation requirements for longer candidates. |
 | 2026-09-28 | Reopened table fidelity for sections 11 and 12 after real-sample validation showed incorrect relationships in short adjacent tables and a multi-level revision table. |
 | 2026-09-28 | Preserved adjacent short schemas and split synchronized logical records within tall horizontal bands while retaining fallback for ambiguous spans. |
+| 2026-09-28 | Unfolded synchronized label/value field bands into independent Markdown tables and retained fallback for irregular stamps. |

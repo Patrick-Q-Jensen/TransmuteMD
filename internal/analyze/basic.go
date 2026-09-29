@@ -655,7 +655,11 @@ func (line textLine) trackingGapThreshold() float64 {
 		return 0
 	}
 	slices.Sort(gaps)
-	return gaps[(len(gaps)-1)/2] * trackingGapMultiplier
+	index := (len(gaps) - 1) / 2
+	if len(gaps) >= 6 {
+		index = (len(gaps)*3 - 1) / 4
+	}
+	return gaps[index] * trackingGapMultiplier
 }
 
 func isSingleWordRune(text string) bool {

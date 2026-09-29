@@ -133,6 +133,60 @@ func TestBasicAnalyzerPreservesConsistentlyTrackedWords(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzerPreservesLongTrackedWordsWithVariableGlyphGaps(t *testing.T) {
+	t.Parallel()
+
+	var runs []document.TextRun
+	left := 10.0
+	addWord := func(text string, gaps []float64) {
+		for index, value := range text {
+			runs = append(runs, document.TextRun{
+				Text: string(value),
+				Bounds: document.Rectangle{
+					Left:   left,
+					Top:    10,
+					Right:  left + 3,
+					Bottom: 16,
+				},
+				Style: document.TextStyle{
+					FontName: "Tracked Sans",
+					FontSize: 6,
+				},
+			})
+			left += 3
+			if index < len(gaps) {
+				left += gaps[index]
+			}
+		}
+	}
+	addWord("ALIGNED", []float64{0.6, 0.7, 0.8, 0.9, 1.3, 0.7})
+	runs = append(runs, document.TextRun{
+		Text:   " ",
+		Bounds: document.Rectangle{Left: left, Top: 10, Right: left + 2, Bottom: 16},
+		Style:  document.TextStyle{FontName: "Tracked Sans", FontSize: 6},
+	})
+	left += 2
+	addWord("METADATA", []float64{0.6, 0.7, 0.8, 0.9, 1.3, 0.7, 0.8})
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(
+		context.Background(),
+		&document.Layout{Pages: []document.Page{{
+			Number:   1,
+			Width:    120,
+			Height:   100,
+			TextRuns: runs,
+		}}},
+	)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+
+	want := []string{"ALIGNED METADATA"}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paragraphs = %#v, want %#v", got, want)
+	}
+}
+
 func TestBasicAnalyzerPreservesIndentedParagraphBoundaries(t *testing.T) {
 	t.Parallel()
 
