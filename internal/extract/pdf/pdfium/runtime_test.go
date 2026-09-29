@@ -93,8 +93,11 @@ type instanceStub struct {
 	pageSizeRequest    *requests.FPDF_GetPageSizeByIndex
 	textRequest        *requests.GetPageTextStructured
 	pageObjects        []references.FPDF_PAGEOBJECT
+	formObjects        map[references.FPDF_PAGEOBJECT][]references.FPDF_PAGEOBJECT
 	pageObjectTypes    map[references.FPDF_PAGEOBJECT]enums.FPDF_PAGEOBJ
+	pageObjectBounds   map[references.FPDF_PAGEOBJECT]responses.FPDFPageObj_GetBounds
 	pageObjectMatrices map[references.FPDF_PAGEOBJECT]structs.FPDF_FS_MATRIX
+	textFontSizes      map[references.FPDF_PAGEOBJECT]float32
 	pathStrokes        map[references.FPDF_PAGEOBJECT]bool
 	pathFillModes      map[references.FPDF_PAGEOBJECT]enums.FPDF_FILLMODE
 	pathSegments       map[references.FPDF_PAGEOBJECT][]references.FPDF_PATHSEGMENT
@@ -170,6 +173,13 @@ func (i *instanceStub) FPDFPageObj_GetType(
 	}, nil
 }
 
+func (i *instanceStub) FPDFPageObj_GetBounds(
+	request *requests.FPDFPageObj_GetBounds,
+) (*responses.FPDFPageObj_GetBounds, error) {
+	response := i.pageObjectBounds[request.PageObject]
+	return &response, nil
+}
+
 func (i *instanceStub) FPDFPageObj_GetMatrix(
 	request *requests.FPDFPageObj_GetMatrix,
 ) (*responses.FPDFPageObj_GetMatrix, error) {
@@ -178,6 +188,34 @@ func (i *instanceStub) FPDFPageObj_GetMatrix(
 		matrix = structs.FPDF_FS_MATRIX{A: 1, D: 1}
 	}
 	return &responses.FPDFPageObj_GetMatrix{Matrix: matrix}, nil
+}
+
+func (i *instanceStub) FPDFTextObj_GetFontSize(
+	request *requests.FPDFTextObj_GetFontSize,
+) (*responses.FPDFTextObj_GetFontSize, error) {
+	return &responses.FPDFTextObj_GetFontSize{
+		FontSize: i.textFontSizes[request.PageObject],
+	}, nil
+}
+
+func (i *instanceStub) FPDFFormObj_CountObjects(
+	request *requests.FPDFFormObj_CountObjects,
+) (*responses.FPDFFormObj_CountObjects, error) {
+	return &responses.FPDFFormObj_CountObjects{
+		Count: len(i.formObjects[request.PageObject]),
+	}, nil
+}
+
+func (i *instanceStub) FPDFFormObj_GetObject(
+	request *requests.FPDFFormObj_GetObject,
+) (*responses.FPDFFormObj_GetObject, error) {
+	objects := i.formObjects[request.PageObject]
+	if request.Index >= uint64(len(objects)) {
+		return &responses.FPDFFormObj_GetObject{}, nil
+	}
+	return &responses.FPDFFormObj_GetObject{
+		PageObject: objects[request.Index],
+	}, nil
 }
 
 func (i *instanceStub) FPDFPath_GetDrawMode(

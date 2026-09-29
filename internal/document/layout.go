@@ -41,12 +41,13 @@ func (l Layout) Validate() error {
 // Page contains the physical text observed on one source page. Dimensions are
 // measured in points.
 type Page struct {
-	Number   int
-	Width    float64
-	Height   float64
-	TextRuns []TextRun
-	Links    []LinkAnnotation
-	Rulings  []Ruling
+	Number           int
+	Width            float64
+	Height           float64
+	TextRuns         []TextRun
+	TextPlaceholders []TextPlaceholder
+	Links            []LinkAnnotation
+	Rulings          []Ruling
 }
 
 // Validate checks page dimensions and text runs.
@@ -62,6 +63,11 @@ func (p Page) Validate() error {
 			return fmt.Errorf("text run %d: %w", i+1, err)
 		}
 	}
+	for i, placeholder := range p.TextPlaceholders {
+		if err := placeholder.Validate(); err != nil {
+			return fmt.Errorf("text placeholder %d: %w", i+1, err)
+		}
+	}
 	for i, link := range p.Links {
 		if err := link.Validate(); err != nil {
 			return fmt.Errorf("link %d: %w", i+1, err)
@@ -71,6 +77,24 @@ func (p Page) Validate() error {
 		if err := ruling.Validate(); err != nil {
 			return fmt.Errorf("ruling %d: %w", i+1, err)
 		}
+	}
+	return nil
+}
+
+// TextPlaceholder is an authored text position without extractable content.
+// Analysis may use its placement as supporting evidence for empty fields.
+type TextPlaceholder struct {
+	Position Point
+	FontSize float64
+}
+
+// Validate checks that a text placeholder has usable physical placement.
+func (p TextPlaceholder) Validate() error {
+	if err := p.Position.Validate(); err != nil {
+		return fmt.Errorf("position: %w", err)
+	}
+	if !isPositiveFinite(p.FontSize) {
+		return errors.New("font size must be finite and greater than zero")
 	}
 	return nil
 }

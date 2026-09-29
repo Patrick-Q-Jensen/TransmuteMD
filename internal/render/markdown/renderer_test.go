@@ -57,6 +57,33 @@ func TestRendererWritesHeadingAndParagraph(t *testing.T) {
 	}
 }
 
+func TestRendererWritesBlankFieldAndTableCheckboxes(t *testing.T) {
+	t.Parallel()
+
+	doc := &document.Document{Blocks: []document.Block{
+		&document.Field{Kind: document.FieldKindBlank, Label: "Approval:"},
+		&document.Table{Rows: []document.TableRow{
+			{Cells: []document.TableCell{{Text: "Mark"}, {Text: "Choice"}}},
+			{Cells: []document.TableCell{{Checkbox: document.CheckboxUnchecked}, {Text: "First"}}},
+			{Cells: []document.TableCell{{Checkbox: document.CheckboxChecked}, {Text: "Second"}}},
+		}},
+	}}
+	var output bytes.Buffer
+
+	err := markdown.NewRenderer().Render(context.Background(), doc, &output)
+	if err != nil {
+		t.Fatalf("Render() returned an unexpected error: %v", err)
+	}
+	want := "Approval: ________\n\n" +
+		"| Mark | Choice |\n" +
+		"| --- | --- |\n" +
+		"| [ ] | First |\n" +
+		"| [x] | Second |\n"
+	if got := output.String(); got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
 func TestRendererWritesOrderedAndUnorderedLists(t *testing.T) {
 	t.Parallel()
 

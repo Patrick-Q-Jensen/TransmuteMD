@@ -28,6 +28,12 @@ func TestLayoutValidate(t *testing.T) {
 						},
 					},
 				},
+				TextPlaceholders: []document.TextPlaceholder{
+					{
+						Position: document.Point{X: 180, Y: 80},
+						FontSize: 10,
+					},
+				},
 				Links: []document.LinkAnnotation{
 					{
 						Bounds: document.Rectangle{Left: 72, Top: 72, Right: 150, Bottom: 84},
@@ -50,6 +56,21 @@ func TestLayoutValidate(t *testing.T) {
 
 	if err := layout.Validate(); err != nil {
 		t.Fatalf("Validate() returned an unexpected error: %v", err)
+	}
+}
+
+func TestPageValidateRejectsInvalidTextPlaceholder(t *testing.T) {
+	t.Parallel()
+
+	page := document.Page{
+		Width:  612,
+		Height: 792,
+		TextPlaceholders: []document.TextPlaceholder{{
+			Position: document.Point{X: 10, Y: 20},
+		}},
+	}
+	if err := page.Validate(); err == nil {
+		t.Fatal("Validate() returned nil for a placeholder without a font size")
 	}
 }
 

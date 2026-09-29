@@ -46,6 +46,90 @@ func TestDetectTablesAssignsRectangularCells(t *testing.T) {
 	}
 }
 
+func TestSemanticTableMarksCenteredPlaceholderColumnAsUnchecked(t *testing.T) {
+	t.Parallel()
+
+	rulings := []document.Ruling{
+		horizontalRuling(10, 110, 10),
+		horizontalRuling(10, 110, 30),
+		horizontalRuling(10, 110, 50),
+		horizontalRuling(10, 110, 70),
+		verticalRuling(35, 10, 70),
+	}
+	runs := []orderedRun{
+		styledTableRun("Mark", 14, 15, 30, 25, 700),
+		styledTableRun("Option", 40, 15, 75, 25, 700),
+		tableRun("First", 40, 35, 65, 45),
+		tableRun("Second", 40, 55, 70, 65),
+	}
+	page := document.Page{
+		Height:  100,
+		Rulings: rulings,
+		TextPlaceholders: []document.TextPlaceholder{
+			{Position: document.Point{X: 22.5, Y: 40}, FontSize: 8},
+			{Position: document.Point{X: 22.5, Y: 60}, FontSize: 8},
+		},
+	}
+
+	result, err := detectTables(context.Background(), page, runs)
+	if err != nil {
+		t.Fatalf("detectTables() returned an unexpected error: %v", err)
+	}
+	if len(result.tables) != 1 {
+		t.Fatalf("table count = %d, want 1", len(result.tables))
+	}
+	table, err := semanticTable(
+		context.Background(),
+		result.tables[0],
+		page.TextPlaceholders,
+	)
+	if err != nil {
+		t.Fatalf("semanticTable() returned an unexpected error: %v", err)
+	}
+	for rowIndex := 1; rowIndex < len(table.Rows); rowIndex++ {
+		if got := table.Rows[rowIndex].Cells[0].Checkbox; got != document.CheckboxUnchecked {
+			t.Fatalf("row %d checkbox = %d, want unchecked", rowIndex+1, got)
+		}
+	}
+}
+
+func TestSemanticTableRejectsIncompletePlaceholderColumn(t *testing.T) {
+	t.Parallel()
+
+	table := detectedTable{
+		bounds:  document.Rectangle{Left: 10, Top: 10, Right: 110, Bottom: 70},
+		columns: []float64{10, 35, 110},
+		rows: [][]detectedTableCell{
+			{
+				{bounds: document.Rectangle{Left: 10, Top: 10, Right: 35, Bottom: 30}, runs: []orderedRun{tableRun("Mark", 14, 15, 30, 25)}},
+				{bounds: document.Rectangle{Left: 35, Top: 10, Right: 110, Bottom: 30}, runs: []orderedRun{tableRun("Option", 40, 15, 75, 25)}},
+			},
+			{
+				{bounds: document.Rectangle{Left: 10, Top: 30, Right: 35, Bottom: 50}},
+				{bounds: document.Rectangle{Left: 35, Top: 30, Right: 110, Bottom: 50}, runs: []orderedRun{tableRun("First", 40, 35, 65, 45)}},
+			},
+			{
+				{bounds: document.Rectangle{Left: 10, Top: 50, Right: 35, Bottom: 70}},
+				{bounds: document.Rectangle{Left: 35, Top: 50, Right: 110, Bottom: 70}, runs: []orderedRun{tableRun("Second", 40, 55, 70, 65)}},
+			},
+		},
+	}
+	placeholders := []document.TextPlaceholder{
+		{Position: document.Point{X: 22.5, Y: 40}, FontSize: 8},
+		{Position: document.Point{X: 13, Y: 60}, FontSize: 8},
+	}
+
+	result, err := semanticTable(context.Background(), table, placeholders)
+	if err != nil {
+		t.Fatalf("semanticTable() returned an unexpected error: %v", err)
+	}
+	for rowIndex := 1; rowIndex < len(result.Rows); rowIndex++ {
+		if got := result.Rows[rowIndex].Cells[0].Checkbox; got != document.CheckboxNone {
+			t.Fatalf("row %d checkbox = %d, want none", rowIndex+1, got)
+		}
+	}
+}
+
 func TestDetectTablesAcceptsEmptyBodyRowsInCompleteGrid(t *testing.T) {
 	t.Parallel()
 
@@ -278,7 +362,7 @@ func TestDetectTablesUnfoldsStandaloneStackedFieldBand(t *testing.T) {
 	if got := len(result.tables[0].rows); got != 2 {
 		t.Fatalf("row count = %d, want 2", got)
 	}
-	table, err := semanticTable(context.Background(), result.tables[0])
+	table, err := semanticTable(context.Background(), result.tables[0], nil)
 	if err != nil {
 		t.Fatalf("semanticTable() returned an unexpected error: %v", err)
 	}
@@ -539,7 +623,7 @@ func TestDetectTablesKeepsAdjacentShortSchemasAndLinksIndependent(t *testing.T) 
 	if got := len(result.tables[1].columns) - 1; got != 2 {
 		t.Fatalf("second table column count = %d, want 2", got)
 	}
-	first, err := semanticTable(context.Background(), result.tables[0])
+	first, err := semanticTable(context.Background(), result.tables[0], nil)
 	if err != nil {
 		t.Fatalf("semanticTable() returned an unexpected error: %v", err)
 	}

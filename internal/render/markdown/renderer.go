@@ -86,6 +86,8 @@ func validateBlocks(ctx context.Context, doc *document.Document) error {
 		}
 		var text string
 		switch typed := block.(type) {
+		case *document.Field:
+			text = typed.Label
 		case *document.Paragraph:
 			text = typed.Text
 		case *document.Heading:
@@ -151,6 +153,17 @@ func renderBlock(
 	anchors map[string]struct{},
 ) (string, error) {
 	switch typed := block.(type) {
+	case *document.Field:
+		label, err := renderLinkedText(ctx, typed.Label, typed.Links, anchors)
+		if err != nil {
+			return "", err
+		}
+		switch typed.Kind {
+		case document.FieldKindBlank:
+			return label + " ________", nil
+		default:
+			return "", fmt.Errorf("unsupported field kind %d", typed.Kind)
+		}
 	case *document.Paragraph:
 		return renderLinkedText(ctx, typed.Text, typed.Links, anchors)
 	case *document.Heading:
@@ -188,13 +201,29 @@ func renderTable(
 		}
 		result.WriteByte('|')
 		for cellIndex, cell := range row.Cells {
-			content, err := renderLinkedText(ctx, cell.Text, cell.Links, anchors)
-			if err != nil {
+			var content string
+			switch cell.Checkbox {
+			case document.CheckboxNone:
+				var err error
+				content, err = renderLinkedText(ctx, cell.Text, cell.Links, anchors)
+				if err != nil {
+					return "", fmt.Errorf(
+						"render table row %d cell %d: %w",
+						rowIndex+1,
+						cellIndex+1,
+						err,
+					)
+				}
+			case document.CheckboxUnchecked:
+				content = "[ ]"
+			case document.CheckboxChecked:
+				content = "[x]"
+			default:
 				return "", fmt.Errorf(
-					"render table row %d cell %d: %w",
+					"render table row %d cell %d: unsupported checkbox state %d",
 					rowIndex+1,
 					cellIndex+1,
-					err,
+					cell.Checkbox,
 				)
 			}
 			result.WriteByte(' ')

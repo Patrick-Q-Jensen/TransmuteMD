@@ -18,6 +18,10 @@ const (
 	horizontalAnchorBodySupportRatio = 0.75
 	maximumFirstAnchorInset          = 8.0
 	horizontalRowContinuationRatio   = 1.5
+	maximumCheckboxColumnRatio       = 0.25
+	maximumCheckboxWidthHeightRatio  = 3.0
+	minimumCheckboxFontHeightRatio   = 0.2
+	maximumCheckboxFontHeightRatio   = 0.8
 )
 
 type tableSegment struct {
@@ -1334,22 +1338,251 @@ func orderedTableContent(
 func semanticTable(
 	ctx context.Context,
 	table detectedTable,
+	placeholders []document.TextPlaceholder,
 ) (*document.Table, error) {
 	content, err := orderedTableContent(ctx, table)
 	if err != nil {
 		return nil, err
 	}
+	checkboxes := checkboxColumns(table, content, placeholders)
 	result := &document.Table{Rows: make([]document.TableRow, len(content))}
 	for rowIndex, row := range content {
 		result.Rows[rowIndex].Cells = make([]document.TableCell, len(row))
 		for columnIndex, cell := range row {
+			checkbox := document.CheckboxNone
+			if rowIndex > 0 && checkboxes[columnIndex] {
+				checkbox = document.CheckboxUnchecked
+			}
 			result.Rows[rowIndex].Cells[columnIndex] = document.TableCell{
-				Text:  cell.text,
-				Links: cell.links,
+				Text:     cell.text,
+				Links:    cell.links,
+				Checkbox: checkbox,
 			}
 		}
 	}
 	return result, nil
+}
+
+func checkboxColumns(
+	table detectedTable,
+	content [][]tableCellContent,
+	placeholders []document.TextPlaceholder,
+) map[int]bool {
+	result := make(map[int]bool)
+	if len(table.rows) < 3 || len(content) != len(table.rows) {
+		return result
+	}
+	tableWidth := table.bounds.Right - table.bounds.Left
+	for columnIndex := range table.rows[0] {
+		columnWidth := table.columns[columnIndex+1] - table.columns[columnIndex]
+		if columnWidth > tableWidth*maximumCheckboxColumnRatio {
+			continue
+		}
+		valid := true
+		for rowIndex := 1; rowIndex < len(table.rows); rowIndex++ {
+			cell := table.rows[rowIndex][columnIndex]
+			cellContent := content[rowIndex][columnIndex]
+			height := cell.bounds.Bottom - cell.bounds.Top
+			if cellContent.text != "" ||
+				len(cellContent.links) != 0 ||
+				columnWidth > height*maximumCheckboxWidthHeightRatio ||
+				!rowHasTextOutsideColumn(content[rowIndex], columnIndex) {
+				valid = false
+				break
+			}
+			markers := placeholdersInRectangle(placeholders, cell.bounds)
+			if len(markers) != 1 ||
+				!centeredCheckboxPlaceholder(markers[0], cell.bounds) {
+				valid = false
+				break
+			}
+		}
+		if valid {
+			result[columnIndex] = true
+		}
+	}
+	return result
+}
+
+func rowHasTextOutsideColumn(row []tableCellContent, excluded int) bool {
+	for index, cell := range row {
+		if index != excluded && strings.TrimSpace(cell.text) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func placeholdersInRectangle(
+	placeholders []document.TextPlaceholder,
+	bounds document.Rectangle,
+) []document.TextPlaceholder {
+	var result []document.TextPlaceholder
+	for _, placeholder := range placeholders {
+		if placeholder.Position.X > bounds.Left &&
+			placeholder.Position.X < bounds.Right &&
+			placeholder.Position.Y > bounds.Top &&
+			placeholder.Position.Y < bounds.Bottom {
+			result = append(result, placeholder)
+		}
+	}
+	return result
+}
+
+func centeredCheckboxPlaceholder(
+	placeholder document.TextPlaceholder,
+	bounds document.Rectangle,
+) bool {
+	width := bounds.Right - bounds.Left
+	height := bounds.Bottom - bounds.Top
+	if placeholder.FontSize < height*minimumCheckboxFontHeightRatio ||
+		placeholder.FontSize > height*maximumCheckboxFontHeightRatio {
+		return false
+	}
+	toleranceX := math.Max(tableCoordinateTolerance, width*0.1)
+	toleranceY := math.Max(tableCoordinateTolerance, height*0.2)
+	return math.Abs(placeholder.Position.X-(bounds.Left+bounds.Right)/2) <= toleranceX &&
+		math.Abs(placeholder.Position.Y-(bounds.Top+bounds.Bottom)/2) <= toleranceY
+}
+
+func associateLabeledBlankFields(
+	page document.Page,
+	lines []textLine,
+	tables []detectedTable,
+) {
+	rectangles := closedRulingRectangles(page.Rulings)
+	usedLines := make(map[int]struct{})
+	for _, bounds := range rectangles {
+		if bounds.Right-bounds.Left > page.Width*maximumFieldWidthRatio ||
+			bounds.Bottom-bounds.Top > page.Height*maximumFieldHeightRatio ||
+			rectangleInsideTable(bounds, tables) ||
+			rectangleContainsText(bounds, page.TextRuns) {
+			continue
+		}
+		placeholders := placeholdersInRectangle(page.TextPlaceholders, bounds)
+		if len(placeholders) != 1 ||
+			placeholders[0].FontSize >= bounds.Bottom-bounds.Top {
+			continue
+		}
+		lineIndex := nearestFieldLabel(lines, bounds, page.Width, usedLines)
+		if lineIndex < 0 {
+			continue
+		}
+		lines[lineIndex].field = &document.Field{
+			Kind:  document.FieldKindBlank,
+			Label: lines[lineIndex].text,
+			Links: slices.Clone(lines[lineIndex].links),
+		}
+		usedLines[lineIndex] = struct{}{}
+	}
+}
+
+func closedRulingRectangles(rulings []document.Ruling) []document.Rectangle {
+	horizontal, vertical := normalizedTableSegments(rulings)
+	groups := groupHorizontalSegments(horizontal)
+	var result []document.Rectangle
+	for _, group := range groups {
+		for index := 1; index < len(group.lines); index++ {
+			top := group.lines[index-1].position
+			bottom := group.lines[index].position
+			if bottom-top < minimumTableCellHeight ||
+				!hasSpanningSegment(vertical, group.left, top, bottom) ||
+				!hasSpanningSegment(vertical, group.right, top, bottom) {
+				continue
+			}
+			result = append(result, document.Rectangle{
+				Left:   group.left,
+				Top:    top,
+				Right:  group.right,
+				Bottom: bottom,
+			})
+		}
+	}
+	return result
+}
+
+func hasSpanningSegment(
+	segments []tableSegment,
+	position,
+	start,
+	end float64,
+) bool {
+	for _, segment := range segments {
+		if math.Abs(segment.position-position) <= tableCoordinateTolerance &&
+			segment.start <= start+tableCoordinateTolerance &&
+			segment.end >= end-tableCoordinateTolerance {
+			return true
+		}
+	}
+	return false
+}
+
+func rectangleInsideTable(
+	bounds document.Rectangle,
+	tables []detectedTable,
+) bool {
+	centerX := (bounds.Left + bounds.Right) / 2
+	centerY := (bounds.Top + bounds.Bottom) / 2
+	for _, table := range tables {
+		if centerX > table.bounds.Left &&
+			centerX < table.bounds.Right &&
+			centerY > table.bounds.Top &&
+			centerY < table.bounds.Bottom {
+			return true
+		}
+	}
+	return false
+}
+
+func rectangleContainsText(
+	bounds document.Rectangle,
+	runs []document.TextRun,
+) bool {
+	for _, run := range runs {
+		centerX := (run.Bounds.Left + run.Bounds.Right) / 2
+		centerY := verticalCenter(run.Bounds)
+		if centerX > bounds.Left &&
+			centerX < bounds.Right &&
+			centerY > bounds.Top &&
+			centerY < bounds.Bottom {
+			return true
+		}
+	}
+	return false
+}
+
+func nearestFieldLabel(
+	lines []textLine,
+	bounds document.Rectangle,
+	pageWidth float64,
+	used map[int]struct{},
+) int {
+	bestIndex := -1
+	bestGap := math.Inf(1)
+	for index, line := range lines {
+		if _, exists := used[index]; exists ||
+			line.inTable ||
+			line.field != nil ||
+			strings.TrimSpace(line.text) == "" {
+			continue
+		}
+		centerY := (line.top + line.bottom) / 2
+		gap := bounds.Left - line.right
+		maximumGap := math.Max(
+			pageWidth*maximumFieldGapRatio,
+			(line.bottom-line.top)*3,
+		)
+		if centerY <= bounds.Top ||
+			centerY >= bounds.Bottom ||
+			gap < -tableCoordinateTolerance ||
+			gap > maximumGap ||
+			gap >= bestGap {
+			continue
+		}
+		bestIndex = index
+		bestGap = gap
+	}
+	return bestIndex
 }
 
 func lineTableMembership(line textLine, table detectedTable) (bool, bool) {

@@ -33,6 +33,9 @@ const (
 	maximumTrackingGapRatio = 0.35
 	trackingGapMultiplier   = 1.5
 	minimumTrackingGaps     = 2
+	maximumFieldWidthRatio  = 0.25
+	maximumFieldHeightRatio = 0.1
+	maximumFieldGapRatio    = 0.04
 )
 
 var errNilLayout = errors.New("layout must not be nil")
@@ -141,6 +144,7 @@ type textLine struct {
 	breakBefore bool
 	inTable     bool
 	table       *document.Table
+	field       *document.Field
 }
 
 type analyzedPage struct {
@@ -207,7 +211,11 @@ func analyzePageLines(
 	tables := detection.tables
 	tableBlocks := make([]*document.Table, len(tables))
 	for index, table := range tables {
-		tableBlocks[index], err = semanticTable(ctx, table)
+		tableBlocks[index], err = semanticTable(
+			ctx,
+			table,
+			page.TextPlaceholders,
+		)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -256,6 +264,7 @@ func analyzePageLines(
 			}
 		}
 	}
+	associateLabeledBlankFields(page, lines, tables)
 
 	var diagnostics []document.Diagnostic
 	if ambiguousLink {
@@ -943,6 +952,12 @@ func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error
 			}
 			continue
 		}
+		if line.field != nil {
+			flushParagraph()
+			flushList()
+			blocks = append(blocks, line.field)
+			continue
+		}
 		if line.text == "" {
 			continue
 		}
@@ -1145,6 +1160,8 @@ func visitBlockLinks(
 ) error {
 	for _, block := range blocks {
 		switch typed := block.(type) {
+		case *document.Field:
+			visitTextLinks(typed.Label, typed.Links, visit)
 		case *document.Paragraph:
 			visitTextLinks(typed.Text, typed.Links, visit)
 		case *document.Heading:

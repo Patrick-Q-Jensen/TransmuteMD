@@ -289,11 +289,11 @@ but does not preserve their source row and column relationships accurately.
 
 ### Group 5: Forms and document fields
 
-- [ ] Define which checkboxes, signature fields, blank result cells, and ruled
+- [x] Define which checkboxes, signature fields, blank result cells, and ruled
       fields carry useful document semantics.
-- [ ] Detect supported field geometry without treating decorative lines as
+- [x] Detect supported field geometry without treating decorative lines as
       content.
-- [ ] Represent supported empty checkboxes and meaningful blank fields in
+- [x] Represent supported empty checkboxes and meaningful blank fields in
       Markdown-compatible form.
 
 Image and general graphic extraction remains deferred to Phase 6. Decorative
@@ -409,3 +409,4 @@ A task is complete when:
 | 2026-09-28 | Reopened table fidelity for sections 11 and 12 after real-sample validation showed incorrect relationships in short adjacent tables and a multi-level revision table. |
 | 2026-09-28 | Preserved adjacent short schemas and split synchronized logical records within tall horizontal bands while retaining fallback for ambiguous spans. |
 | 2026-09-28 | Unfolded synchronized label/value field bands into independent Markdown tables and retained fallback for irregular stamps. |
+| 2026-09-28 | Preserved repeated empty table controls and explicitly labeled ruled blanks while leaving unlabeled signature bands and ambiguous fields unmodeled. |

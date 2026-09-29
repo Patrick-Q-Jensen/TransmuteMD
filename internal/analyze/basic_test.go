@@ -62,6 +62,80 @@ func TestBasicAnalyzerOrdersTextAndGroupsParagraphs(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzerPreservesLabeledBlankField(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{Pages: []document.Page{{
+		Number: 1,
+		Width:  200,
+		Height: 200,
+		TextRuns: []document.TextRun{
+			textRun("Review status:", 10, 10, 110, 20),
+		},
+		TextPlaceholders: []document.TextPlaceholder{{
+			Position: document.Point{X: 125, Y: 18},
+			FontSize: 8,
+		}},
+		Rulings: []document.Ruling{
+			{Start: document.Point{X: 120, Y: 8}, End: document.Point{X: 170, Y: 8}},
+			{Start: document.Point{X: 120, Y: 28}, End: document.Point{X: 170, Y: 28}},
+			{Start: document.Point{X: 120, Y: 8}, End: document.Point{X: 120, Y: 28}},
+			{Start: document.Point{X: 170, Y: 8}, End: document.Point{X: 170, Y: 28}},
+		},
+	}}}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if len(result.Blocks) != 1 {
+		t.Fatalf("block count = %d, want 1", len(result.Blocks))
+	}
+	field, ok := result.Blocks[0].(*document.Field)
+	if !ok {
+		t.Fatalf("block type = %T, want *document.Field", result.Blocks[0])
+	}
+	if field.Kind != document.FieldKindBlank || field.Label != "Review status:" {
+		t.Fatalf("field = %+v, want labeled blank field", field)
+	}
+}
+
+func TestBasicAnalyzerDoesNotInventUnlabeledBlankField(t *testing.T) {
+	t.Parallel()
+
+	layout := &document.Layout{Pages: []document.Page{{
+		Number: 1,
+		Width:  200,
+		Height: 200,
+		TextRuns: []document.TextRun{
+			textRun("Complete below.", 10, 10, 100, 20),
+		},
+		TextPlaceholders: []document.TextPlaceholder{{
+			Position: document.Point{X: 25, Y: 55},
+			FontSize: 8,
+		}},
+		Rulings: []document.Ruling{
+			{Start: document.Point{X: 20, Y: 45}, End: document.Point{X: 60, Y: 45}},
+			{Start: document.Point{X: 20, Y: 65}, End: document.Point{X: 60, Y: 65}},
+			{Start: document.Point{X: 20, Y: 45}, End: document.Point{X: 20, Y: 65}},
+			{Start: document.Point{X: 60, Y: 45}, End: document.Point{X: 60, Y: 65}},
+		},
+	}}}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got := paragraphTexts(t, result); !reflect.DeepEqual(got, []string{"Complete below."}) {
+		t.Fatalf("paragraphs = %#v, want instruction only", got)
+	}
+	for _, block := range result.Blocks {
+		if _, ok := block.(*document.Field); ok {
+			t.Fatal("unlabeled ruled region was emitted as a field")
+		}
+	}
+}
+
 func TestBasicAnalyzerUsesVisibleWhitespaceAndIgnoresControlWhitespace(t *testing.T) {
 	t.Parallel()
 
@@ -1522,9 +1596,17 @@ func cloneLayout(layout document.Layout) document.Layout {
 			[]document.TextRun(nil),
 			layout.Pages[index].TextRuns...,
 		)
+		clone.Pages[index].TextPlaceholders = append(
+			[]document.TextPlaceholder(nil),
+			layout.Pages[index].TextPlaceholders...,
+		)
 		clone.Pages[index].Links = append(
 			[]document.LinkAnnotation(nil),
 			layout.Pages[index].Links...,
+		)
+		clone.Pages[index].Rulings = append(
+			[]document.Ruling(nil),
+			layout.Pages[index].Rulings...,
 		)
 	}
 	return clone

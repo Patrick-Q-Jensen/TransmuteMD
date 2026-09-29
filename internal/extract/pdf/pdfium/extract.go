@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	engineName          = "pdfium-wasm"
-	fontFlagItalic      = 1 << 6
-	rulingAxisTolerance = 0.25
+	engineName           = "pdfium-wasm"
+	fontFlagItalic       = 1 << 6
+	rulingAxisTolerance  = 0.25
+	placeholderTolerance = 0.01
 )
 
 var (
@@ -31,7 +32,9 @@ var (
 	errNilObjectCount    = errors.New("PDFium returned no page object count")
 	errNilPageObject     = errors.New("PDFium returned no page object")
 	errNilPageObjectType = errors.New("PDFium returned no page object type")
+	errNilObjectBounds   = errors.New("PDFium returned no page object bounds")
 	errNilObjectMatrix   = errors.New("PDFium returned no page object matrix")
+	errNilFontSize       = errors.New("PDFium returned no text object font size")
 	errNilPathDrawMode   = errors.New("PDFium returned no path draw mode")
 	errNilSegmentCount   = errors.New("PDFium returned no path segment count")
 	errNilPathSegment    = errors.New("PDFium returned no path segment")
@@ -264,7 +267,7 @@ func extractPage(
 		}
 	}
 
-	rulings, err := extractPageRulings(
+	rulings, placeholders, err := extractPageGeometry(
 		worker,
 		pdf,
 		index,
@@ -289,12 +292,13 @@ func extractPage(
 	}
 
 	return document.Page{
-		Number:   index + 1,
-		Width:    size.Width,
-		Height:   size.Height,
-		TextRuns: runs,
-		Links:    links,
-		Rulings:  rulings,
+		Number:           index + 1,
+		Width:            size.Width,
+		Height:           size.Height,
+		TextRuns:         runs,
+		TextPlaceholders: placeholders,
+		Links:            links,
+		Rulings:          rulings,
 	}, diagnostics, nil
 }
 
@@ -307,14 +311,29 @@ type affineMatrix struct {
 	f float64
 }
 
-func extractPageRulings(
+func identityMatrix() affineMatrix {
+	return affineMatrix{a: 1, d: 1}
+}
+
+func composeMatrices(parent, child affineMatrix) affineMatrix {
+	return affineMatrix{
+		a: parent.a*child.a + parent.c*child.b,
+		b: parent.b*child.a + parent.d*child.b,
+		c: parent.a*child.c + parent.c*child.d,
+		d: parent.b*child.c + parent.d*child.d,
+		e: parent.a*child.e + parent.c*child.f + parent.e,
+		f: parent.b*child.e + parent.d*child.f + parent.f,
+	}
+}
+
+func extractPageGeometry(
 	worker instance,
 	pdf references.FPDF_DOCUMENT,
 	index int,
 	pageHeight float64,
 	limits extract.Limits,
 	counts *extractionCounts,
-) ([]document.Ruling, error) {
+) ([]document.Ruling, []document.TextPlaceholder, error) {
 	page := requests.Page{ByIndex: &requests.PageByIndex{
 		Document: pdf,
 		Index:    index,
@@ -323,16 +342,16 @@ func extractPageRulings(
 		Page: page,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("count page objects: %w", err)
+		return nil, nil, fmt.Errorf("count page objects: %w", err)
 	}
 	if response == nil {
-		return nil, errNilObjectCount
+		return nil, nil, errNilObjectCount
 	}
 	if response.Count < 0 {
-		return nil, fmt.Errorf("page object count must not be negative: %d", response.Count)
+		return nil, nil, fmt.Errorf("page object count must not be negative: %d", response.Count)
 	}
 	if response.Count > limits.MaxPageObjects-counts.pageObjects {
-		return nil, extract.LimitError(
+		return nil, nil, extract.LimitError(
 			"page objects",
 			int64(counts.pageObjects+response.Count),
 			int64(limits.MaxPageObjects),
@@ -341,38 +360,43 @@ func extractPageRulings(
 	counts.pageObjects += response.Count
 
 	var rulings []document.Ruling
+	var placeholders []document.TextPlaceholder
 	for objectIndex := range response.Count {
 		object, err := worker.FPDFPage_GetObject(&requests.FPDFPage_GetObject{
 			Page:  page,
 			Index: objectIndex,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("page object %d: get: %w", objectIndex+1, err)
+			return nil, nil, fmt.Errorf("page object %d: get: %w", objectIndex+1, err)
 		}
 		if object == nil || object.PageObject == "" {
-			return nil, fmt.Errorf("page object %d: %w", objectIndex+1, errNilPageObject)
+			return nil, nil, fmt.Errorf("page object %d: %w", objectIndex+1, errNilPageObject)
 		}
-		objectRulings, err := extractPathRulings(
+		objectRulings, err := extractObjectRulings(
 			worker,
 			object.PageObject,
+			identityMatrix(),
 			pageHeight,
 			limits,
 			counts,
+			&placeholders,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("page object %d: %w", objectIndex+1, err)
+			return nil, nil, fmt.Errorf("page object %d: %w", objectIndex+1, err)
 		}
 		rulings = append(rulings, objectRulings...)
 	}
-	return rulings, nil
+	return rulings, placeholders, nil
 }
 
-func extractPathRulings(
+func extractObjectRulings(
 	worker instance,
 	object references.FPDF_PAGEOBJECT,
+	parentMatrix affineMatrix,
 	pageHeight float64,
 	limits extract.Limits,
 	counts *extractionCounts,
+	placeholders *[]document.TextPlaceholder,
 ) ([]document.Ruling, error) {
 	objectType, err := worker.FPDFPageObj_GetType(&requests.FPDFPageObj_GetType{
 		PageObject: object,
@@ -382,6 +406,32 @@ func extractPathRulings(
 	}
 	if objectType == nil {
 		return nil, errNilPageObjectType
+	}
+	if objectType.Type == enums.FPDF_PAGEOBJ_TEXT {
+		placeholder, ok, err := extractTextPlaceholder(
+			worker,
+			object,
+			parentMatrix,
+			pageHeight,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			*placeholders = append(*placeholders, placeholder)
+		}
+		return nil, nil
+	}
+	if objectType.Type == enums.FPDF_PAGEOBJ_FORM {
+		return extractFormRulings(
+			worker,
+			object,
+			parentMatrix,
+			pageHeight,
+			limits,
+			counts,
+			placeholders,
+		)
 	}
 	if objectType.Type != enums.FPDF_PAGEOBJ_PATH {
 		return nil, nil
@@ -408,14 +458,14 @@ func extractPathRulings(
 	if matrixResponse == nil {
 		return nil, errNilObjectMatrix
 	}
-	matrix := affineMatrix{
+	matrix := composeMatrices(parentMatrix, affineMatrix{
 		a: float64(matrixResponse.Matrix.A),
 		b: float64(matrixResponse.Matrix.B),
 		c: float64(matrixResponse.Matrix.C),
 		d: float64(matrixResponse.Matrix.D),
 		e: float64(matrixResponse.Matrix.E),
 		f: float64(matrixResponse.Matrix.F),
-	}
+	})
 
 	stroke, err := worker.FPDFPageObj_GetStrokeWidth(&requests.FPDFPageObj_GetStrokeWidth{
 		PageObject: object,
@@ -542,6 +592,128 @@ func extractPathRulings(
 			}
 			previous = subpathStart
 		}
+	}
+	return rulings, nil
+}
+
+func extractTextPlaceholder(
+	worker instance,
+	object references.FPDF_PAGEOBJECT,
+	parentMatrix affineMatrix,
+	pageHeight float64,
+) (document.TextPlaceholder, bool, error) {
+	bounds, err := worker.FPDFPageObj_GetBounds(&requests.FPDFPageObj_GetBounds{
+		PageObject: object,
+	})
+	if err != nil {
+		return document.TextPlaceholder{}, false, fmt.Errorf("get bounds: %w", err)
+	}
+	if bounds == nil {
+		return document.TextPlaceholder{}, false, errNilObjectBounds
+	}
+	if math.Abs(float64(bounds.Right-bounds.Left)) > placeholderTolerance ||
+		math.Abs(float64(bounds.Top-bounds.Bottom)) > placeholderTolerance {
+		return document.TextPlaceholder{}, false, nil
+	}
+	fontSize, err := worker.FPDFTextObj_GetFontSize(&requests.FPDFTextObj_GetFontSize{
+		PageObject: object,
+	})
+	if err != nil {
+		return document.TextPlaceholder{}, false, fmt.Errorf("get font size: %w", err)
+	}
+	if fontSize == nil {
+		return document.TextPlaceholder{}, false, errNilFontSize
+	}
+	scaleX := math.Hypot(parentMatrix.a, parentMatrix.b)
+	scaleY := math.Hypot(parentMatrix.c, parentMatrix.d)
+	size := float64(fontSize.FontSize) * (scaleX + scaleY) / 2
+	if size <= 0 || math.IsNaN(size) || math.IsInf(size, 0) {
+		return document.TextPlaceholder{}, false, nil
+	}
+	return document.TextPlaceholder{
+		Position: transformPoint(
+			parentMatrix,
+			float64(bounds.Left+bounds.Right)/2,
+			float64(bounds.Bottom+bounds.Top)/2,
+			pageHeight,
+		),
+		FontSize: size,
+	}, true, nil
+}
+
+func extractFormRulings(
+	worker instance,
+	object references.FPDF_PAGEOBJECT,
+	parentMatrix affineMatrix,
+	pageHeight float64,
+	limits extract.Limits,
+	counts *extractionCounts,
+	placeholders *[]document.TextPlaceholder,
+) ([]document.Ruling, error) {
+	matrixResponse, err := worker.FPDFPageObj_GetMatrix(&requests.FPDFPageObj_GetMatrix{
+		PageObject: object,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get matrix: %w", err)
+	}
+	if matrixResponse == nil {
+		return nil, errNilObjectMatrix
+	}
+	matrix := composeMatrices(parentMatrix, affineMatrix{
+		a: float64(matrixResponse.Matrix.A),
+		b: float64(matrixResponse.Matrix.B),
+		c: float64(matrixResponse.Matrix.C),
+		d: float64(matrixResponse.Matrix.D),
+		e: float64(matrixResponse.Matrix.E),
+		f: float64(matrixResponse.Matrix.F),
+	})
+
+	response, err := worker.FPDFFormObj_CountObjects(&requests.FPDFFormObj_CountObjects{
+		PageObject: object,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("count child objects: %w", err)
+	}
+	if response == nil {
+		return nil, errNilObjectCount
+	}
+	if response.Count < 0 {
+		return nil, fmt.Errorf("child object count must not be negative: %d", response.Count)
+	}
+	if response.Count > limits.MaxPageObjects-counts.pageObjects {
+		return nil, extract.LimitError(
+			"page objects",
+			int64(counts.pageObjects+response.Count),
+			int64(limits.MaxPageObjects),
+		)
+	}
+	counts.pageObjects += response.Count
+
+	var rulings []document.Ruling
+	for childIndex := range response.Count {
+		child, err := worker.FPDFFormObj_GetObject(&requests.FPDFFormObj_GetObject{
+			PageObject: object,
+			Index:      uint64(childIndex),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("child object %d: get: %w", childIndex+1, err)
+		}
+		if child == nil || child.PageObject == "" {
+			return nil, fmt.Errorf("child object %d: %w", childIndex+1, errNilPageObject)
+		}
+		childRulings, err := extractObjectRulings(
+			worker,
+			child.PageObject,
+			matrix,
+			pageHeight,
+			limits,
+			counts,
+			placeholders,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("child object %d: %w", childIndex+1, err)
+		}
+		rulings = append(rulings, childRulings...)
 	}
 	return rulings, nil
 }

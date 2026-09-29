@@ -83,9 +83,11 @@ renderer construction.
 ### Extraction
 
 An extractor decodes a source into an engine-neutral layout model containing
-pages, positioned text, relevant style information, and visible axis-aligned
-ruling edges. The PDFium adapter owns all PDFium initialization, handles,
-response types, path traversal, coordinate transforms, and cleanup.
+pages, positioned text, relevant style information, authored text
+placeholders without extractable content, and visible axis-aligned ruling
+edges. The PDFium adapter owns all PDFium initialization, handles, response
+types, recursive form-object path traversal, coordinate transforms, and
+cleanup.
 
 Extraction does not decide whether text is a heading, paragraph, or list. It
 reports observed layout information and diagnostics. Reliable external link
@@ -99,6 +101,9 @@ annotations by source page and omission category so repeated annotations
 produce one deterministic warning with a count. Analysis preserves those
 records and adds warnings for ambiguous link geometry and conservative
 table-like or code-like text fallbacks.
+
+Degenerate text objects are retained as engine-neutral physical placeholders
+with a position and nominal font size. They are not controls by themselves.
 
 ### Analysis
 
@@ -242,6 +247,19 @@ aligned table-like text remain ordinary text and produce one diagnostic per
 non-overlapping region. The renderer does not fabricate Markdown delimiters
 or emit raw HTML.
 
+Analysis recognizes an empty table-control column only when it is narrow, has
+at least two body rows, every body cell is otherwise empty and contains one
+centered placeholder, and every row has non-empty content outside that
+column. The cells become typed unchecked controls. An incomplete, off-center,
+oversized, or mixed column remains ordinary empty cells.
+
+A standalone ruled blank becomes a semantic field only when it is a complete,
+empty rectangle outside an accepted table, contains one placeholder, and has
+one nearby text line horizontally aligned immediately to its left. Unlabeled
+ruled bands, signature areas, decorative rectangles, and ambiguous
+associations remain unmodeled. Checked state is never inferred without
+separate positive mark evidence.
+
 A future semantic code block requires multiple adjacent lines with consistent
 monospaced-font, alignment, spacing, and indentation evidence. Its language is
 empty unless reliable source metadata becomes available. A single monospaced
@@ -256,7 +274,9 @@ sparse-table extensions governed by
 tall-band flattening governed by
 [ADR-0010](decisions/0010-flatten-synchronized-table-records.md). Stacked
 field-band unfolding is governed by
-[ADR-0011](decisions/0011-unfold-stacked-field-bands.md).
+[ADR-0011](decisions/0011-unfold-stacked-field-bands.md). Conservative empty
+form-control and labeled-field recovery is governed by
+[ADR-0012](decisions/0012-recover-explicit-empty-fields.md).
 The initial analyzer reports table-like text only after three adjacent lines
 show multiple large intra-line gaps. It reports code-like text only after two
 aligned adjacent lines consistently use recognized monospaced font names.
@@ -284,6 +304,9 @@ an emitted anchor; unmatched page or named targets retain visible label text.
 Validated semantic tables render as pipe tables with the first row as the
 header. Cell text and links use the same escaping rules as other semantic
 content, including escaped literal pipes; empty body cells remain empty.
+Typed unchecked and checked table controls render as `[ ]` and `[x]`.
+Labeled blank fields render as their escaped label followed by a visible
+underscore blank.
 
 ## 6. Package boundaries
 
@@ -405,11 +428,13 @@ type Layout struct {
 }
 
 type Page struct {
-	Number   int
-	Width    float64
-	Height   float64
-	TextRuns []TextRun
-	Links    []LinkAnnotation
+	Number           int
+	Width            float64
+	Height           float64
+	TextRuns         []TextRun
+	TextPlaceholders []TextPlaceholder
+	Links            []LinkAnnotation
+	Rulings          []Ruling
 }
 
 type TextRun struct {
@@ -423,15 +448,18 @@ type TextRun struct {
 Text runs are consecutive text sharing placement and style evidence. They
 retain extraction order; the analyzer, rather than the extractor, determines
 reading order. Style fields use zero values when unavailable so engines are
-not required to expose backend-specific font data.
+not required to expose backend-specific font data. Text placeholders preserve
+authored positions that have no extractable content; they carry no field or
+control semantics until analysis combines them with surrounding geometry.
 
 The semantic model is an ordered set of blocks and non-fatal diagnostics owned
 by `internal/document`.
-It defines plain paragraphs, validated level 1 through 6 headings, and flat
-ordered or unordered lists of plain-text items. Ordered lists retain their
-starting number. Paragraphs, headings, and list items may contain validated,
-non-overlapping external-link ranges. The model contains no extraction-engine
-details.
+It defines plain paragraphs, validated level 1 through 6 headings, ordered or
+unordered lists, rectangular tables, and labeled blank fields. Ordered lists
+retain their starting number. Paragraphs, headings, list items, fields, and
+table cells may contain validated, non-overlapping link ranges. Table cells
+may instead contain a typed checkbox state. The model contains no
+extraction-engine details.
 
 ## 8. Engine selection and lifecycle
 

@@ -13,6 +13,7 @@ func TestDocumentValidate(t *testing.T) {
 	doc := document.Document{
 		Blocks: []document.Block{
 			&document.Heading{Level: 1, Text: "Title"},
+			&document.Field{Kind: document.FieldKindBlank, Label: "Approval:"},
 			&document.Paragraph{Text: "A plain paragraph."},
 			&document.Paragraph{
 				Text: "Visit the site.",
@@ -52,7 +53,7 @@ func TestDocumentValidate(t *testing.T) {
 			&document.Table{
 				Rows: []document.TableRow{
 					{Cells: []document.TableCell{{Text: "Name"}, {Text: "Result"}}},
-					{Cells: []document.TableCell{{Text: "Case A"}, {Text: "Passed"}}},
+					{Cells: []document.TableCell{{Text: "Case A"}, {Checkbox: document.CheckboxUnchecked}}},
 				},
 			},
 		},

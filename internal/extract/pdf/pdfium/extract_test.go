@@ -147,7 +147,7 @@ func TestExtractorMapsPDFiumLayout(t *testing.T) {
 	}
 }
 
-func TestExtractPageRulingsMapsVisibleAxisAlignedSegments(t *testing.T) {
+func TestExtractPageGeometryMapsVisibleAxisAlignedSegments(t *testing.T) {
 	t.Parallel()
 
 	path := references.FPDF_PAGEOBJECT("path")
@@ -188,7 +188,7 @@ func TestExtractPageRulingsMapsVisibleAxisAlignedSegments(t *testing.T) {
 	}
 	counts := extractionCounts{}
 
-	got, err := extractPageRulings(
+	got, placeholders, err := extractPageGeometry(
 		worker,
 		"document",
 		0,
@@ -197,7 +197,10 @@ func TestExtractPageRulingsMapsVisibleAxisAlignedSegments(t *testing.T) {
 		&counts,
 	)
 	if err != nil {
-		t.Fatalf("extractPageRulings() returned an unexpected error: %v", err)
+		t.Fatalf("extractPageGeometry() returned an unexpected error: %v", err)
+	}
+	if len(placeholders) != 0 {
+		t.Fatalf("text placeholders = %#v, want none", placeholders)
 	}
 	want := []document.Ruling{
 		{
@@ -216,6 +219,120 @@ func TestExtractPageRulingsMapsVisibleAxisAlignedSegments(t *testing.T) {
 	}
 	if counts.pageObjects != 1 || counts.pathSegments != 5 || counts.rulings != 2 {
 		t.Fatalf("extraction counts = %+v, want 1 object, 5 segments, 2 rulings", counts)
+	}
+}
+
+func TestExtractPageGeometryDescendsIntoTransformedFormObjects(t *testing.T) {
+	t.Parallel()
+
+	form := references.FPDF_PAGEOBJECT("form")
+	path := references.FPDF_PAGEOBJECT("nested-path")
+	segments := []references.FPDF_PATHSEGMENT{"move", "line"}
+	worker := &instanceStub{
+		log:         &eventLog{},
+		pageObjects: []references.FPDF_PAGEOBJECT{form},
+		formObjects: map[references.FPDF_PAGEOBJECT][]references.FPDF_PAGEOBJECT{
+			form: {path},
+		},
+		pageObjectTypes: map[references.FPDF_PAGEOBJECT]enums.FPDF_PAGEOBJ{
+			form: enums.FPDF_PAGEOBJ_FORM,
+			path: enums.FPDF_PAGEOBJ_PATH,
+		},
+		pageObjectMatrices: map[references.FPDF_PAGEOBJECT]structs.FPDF_FS_MATRIX{
+			form: {A: 1, D: 1, E: 10, F: 20},
+			path: {A: 2, D: 2},
+		},
+		pathFillModes: map[references.FPDF_PAGEOBJECT]enums.FPDF_FILLMODE{
+			path: enums.FPDF_FILLMODE_WINDING,
+		},
+		pathSegments: map[references.FPDF_PAGEOBJECT][]references.FPDF_PATHSEGMENT{
+			path: segments,
+		},
+		segmentTypes: map[references.FPDF_PATHSEGMENT]enums.FPDF_SEGMENT{
+			segments[0]: enums.FPDF_SEGMENT_MOVETO,
+			segments[1]: enums.FPDF_SEGMENT_LINETO,
+		},
+		segmentPoints: map[references.FPDF_PATHSEGMENT]structs.FPDF_FS_POINTF{
+			segments[0]: {X: 1, Y: 2},
+			segments[1]: {X: 5, Y: 2},
+		},
+		strokeWidths: map[references.FPDF_PAGEOBJECT]float32{path: 0.5},
+	}
+	counts := extractionCounts{}
+
+	got, placeholders, err := extractPageGeometry(
+		worker,
+		"document",
+		0,
+		100,
+		extract.DefaultLimits(),
+		&counts,
+	)
+	if err != nil {
+		t.Fatalf("extractPageGeometry() returned an unexpected error: %v", err)
+	}
+	if len(placeholders) != 0 {
+		t.Fatalf("text placeholders = %#v, want none", placeholders)
+	}
+	want := []document.Ruling{{
+		Start: document.Point{X: 12, Y: 76},
+		End:   document.Point{X: 20, Y: 76},
+		Width: 1,
+	}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("rulings = %#v, want %#v", got, want)
+	}
+	if counts.pageObjects != 2 || counts.pathSegments != 2 || counts.rulings != 1 {
+		t.Fatalf("extraction counts = %+v, want 2 objects, 2 segments, 1 ruling", counts)
+	}
+}
+
+func TestExtractPageGeometryMapsDegenerateTextPlaceholders(t *testing.T) {
+	t.Parallel()
+
+	placeholder := references.FPDF_PAGEOBJECT("placeholder")
+	visibleText := references.FPDF_PAGEOBJECT("visible-text")
+	worker := &instanceStub{
+		log:         &eventLog{},
+		pageObjects: []references.FPDF_PAGEOBJECT{placeholder, visibleText},
+		pageObjectTypes: map[references.FPDF_PAGEOBJECT]enums.FPDF_PAGEOBJ{
+			placeholder: enums.FPDF_PAGEOBJ_TEXT,
+			visibleText: enums.FPDF_PAGEOBJ_TEXT,
+		},
+		pageObjectBounds: map[references.FPDF_PAGEOBJECT]responses.FPDFPageObj_GetBounds{
+			placeholder: {Left: 20, Bottom: 30, Right: 20, Top: 30},
+			visibleText: {Left: 40, Bottom: 50, Right: 60, Top: 60},
+		},
+		textFontSizes: map[references.FPDF_PAGEOBJECT]float32{
+			placeholder: 9,
+			visibleText: 9,
+		},
+	}
+	counts := extractionCounts{}
+
+	rulings, got, err := extractPageGeometry(
+		worker,
+		"document",
+		0,
+		100,
+		extract.DefaultLimits(),
+		&counts,
+	)
+	if err != nil {
+		t.Fatalf("extractPageGeometry() returned an unexpected error: %v", err)
+	}
+	if len(rulings) != 0 {
+		t.Fatalf("rulings = %#v, want none", rulings)
+	}
+	want := []document.TextPlaceholder{{
+		Position: document.Point{X: 20, Y: 70},
+		FontSize: 9,
+	}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("text placeholders = %#v, want %#v", got, want)
+	}
+	if counts.pageObjects != 2 {
+		t.Fatalf("page object count = %d, want 2", counts.pageObjects)
 	}
 }
 

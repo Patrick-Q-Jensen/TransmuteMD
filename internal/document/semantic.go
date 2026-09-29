@@ -46,6 +46,39 @@ type Block interface {
 	validate() error
 }
 
+// FieldKind identifies a supported semantic document field.
+type FieldKind uint8
+
+const (
+	// FieldKindBlank identifies a labeled field whose source value is empty.
+	FieldKindBlank FieldKind = iota + 1
+)
+
+// Field is a labeled source field preserved as an editable Markdown blank.
+type Field struct {
+	Kind  FieldKind
+	Label string
+	Links []TextLink
+}
+
+func (*Field) isBlock() {}
+
+func (f *Field) validate() error {
+	if f == nil {
+		return errors.New("field must not be nil")
+	}
+	if f.Kind != FieldKindBlank {
+		return fmt.Errorf("unsupported field kind %d", f.Kind)
+	}
+	if f.Label == "" {
+		return errors.New("field label must not be empty")
+	}
+	if strings.ContainsAny(f.Label, "\r\n") {
+		return errors.New("field label must be a single line")
+	}
+	return validateTextLinks(f.Label, f.Links)
+}
+
 // Paragraph is a block of plain text.
 type Paragraph struct {
 	Text  string
@@ -226,6 +259,24 @@ func (t *Table) validate() error {
 					columnIndex+1,
 				)
 			}
+			if cell.Checkbox != CheckboxNone &&
+				(rowIndex == 0 || cell.Text != "" || len(cell.Links) != 0) {
+				return fmt.Errorf(
+					"table row %d cell %d checkbox must be an otherwise empty body cell",
+					rowIndex+1,
+					columnIndex+1,
+				)
+			}
+			if cell.Checkbox != CheckboxNone &&
+				cell.Checkbox != CheckboxUnchecked &&
+				cell.Checkbox != CheckboxChecked {
+				return fmt.Errorf(
+					"table row %d cell %d has unsupported checkbox state %d",
+					rowIndex+1,
+					columnIndex+1,
+					cell.Checkbox,
+				)
+			}
 			if err := validateTextLinks(cell.Text, cell.Links); err != nil {
 				return fmt.Errorf(
 					"table row %d cell %d: %w",
@@ -239,6 +290,18 @@ func (t *Table) validate() error {
 	return nil
 }
 
+// CheckboxState identifies checkbox content represented by a table cell.
+type CheckboxState uint8
+
+const (
+	// CheckboxNone means the table cell does not represent a checkbox.
+	CheckboxNone CheckboxState = iota
+	// CheckboxUnchecked means the source checkbox is empty.
+	CheckboxUnchecked
+	// CheckboxChecked means the source checkbox is selected.
+	CheckboxChecked
+)
+
 // TableRow is one row in a semantic table.
 type TableRow struct {
 	Cells []TableCell
@@ -246,8 +309,9 @@ type TableRow struct {
 
 // TableCell is plain single-line cell text with optional links.
 type TableCell struct {
-	Text  string
-	Links []TextLink
+	Text     string
+	Links    []TextLink
+	Checkbox CheckboxState
 }
 
 // TextLink identifies linked text by UTF-8 byte offsets.
