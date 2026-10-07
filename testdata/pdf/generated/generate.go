@@ -9,7 +9,11 @@ import (
 
 func main() {
 	output := flag.String("output", "testdata/pdf/generated/simple.pdf", "generated PDF path")
-	fixture := flag.String("fixture", "simple", "fixture to generate: simple or phase2")
+	fixture := flag.String(
+		"fixture",
+		"simple",
+		"fixture to generate: simple, phase2, or contents",
+	)
 	flag.Parse()
 
 	var content []byte
@@ -18,6 +22,8 @@ func main() {
 		content = buildPDF()
 	case "phase2":
 		content = buildPhase2PDF()
+	case "contents":
+		content = buildContentsPDF()
 	default:
 		fmt.Fprintf(os.Stderr, "generate PDF: unknown fixture %q\n", *fixture)
 		os.Exit(2)
@@ -26,6 +32,48 @@ func main() {
 		fmt.Fprintf(os.Stderr, "generate PDF: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func buildContentsPDF() []byte {
+	page1 := "BT\n/F2 24 Tf\n72 730 Td\n(Contents) Tj\nET\n" +
+		"BT\n/F1 12 Tf\n72 690 Td\n(2. Introduction) Tj\nET\n" +
+		"BT\n/F1 12 Tf\n520 690 Td\n(2) Tj\nET\n" +
+		"BT\n/F1 12 Tf\n72 660 Td\n(3. Results) Tj\nET\n" +
+		"BT\n/F1 12 Tf\n520 660 Td\n(3) Tj\nET\n" +
+		"BT\n/F1 12 Tf\n72 80 Td\n(4. General) Tj\nET\n" +
+		"BT\n/F1 12 Tf\n520 80 Td\n(4) Tj\nET\n"
+	page2 := "BT\n/F1 12 Tf\n96 700 Td\n(4.2. Details) Tj\nET\n" +
+		"BT\n/F1 12 Tf\n520 700 Td\n(4) Tj\nET\n" +
+		"BT\n/F1 12 Tf\n72 670 Td\n(5. Release profile and supported products) Tj\nET\n" +
+		"BT\n/F1 12 Tf\n520 670 Td\n(5) Tj\nET\n"
+	page3 := "BT\n/F1 10 Tf\n72 760 Td\n(Preface text continues) Tj\n" +
+		"0 -14 Td\n(across another line) Tj\nET\n" +
+		"BT\n/F2 20 Tf\n72 700 Td\n(5. Release profile and) Tj\nET\n" +
+		"BT\n/F2 20 Tf\n110 676 Td\n(supported products) Tj\nET\n" +
+		"BT\n/F1 10 Tf\n110 650 Td\n(N/A) Tj\n" +
+		"0 -14 Td\n(Following body text.) Tj\nET\n"
+
+	objects := []string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R] /Count 3 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] " +
+			"/Resources << /Font << /F1 9 0 R /F2 10 0 R >> >> " +
+			"/Contents 4 0 R >>",
+		fmt.Sprintf("<< /Length %d >>\nstream\n%sendstream", len(page1), page1),
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] " +
+			"/Resources << /Font << /F1 9 0 R /F2 10 0 R >> >> " +
+			"/Contents 6 0 R /Annots [11 0 R] >>",
+		fmt.Sprintf("<< /Length %d >>\nstream\n%sendstream", len(page2), page2),
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] " +
+			"/Resources << /Font << /F1 9 0 R /F2 10 0 R >> >> " +
+			"/Contents 8 0 R >>",
+		fmt.Sprintf("<< /Length %d >>\nstream\n%sendstream", len(page3), page3),
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+		"<< /Type /Annot /Subtype /Link /Rect [70 666 540 684] " +
+			"/Border [0 0 0] /Dest [7 0 R /Fit] >>",
+	}
+	return writePDF(objects)
 }
 
 func buildPhase2PDF() []byte {

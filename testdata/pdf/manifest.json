@@ -44,6 +44,29 @@
       "expectedPageCount": 3,
       "expectedText": "Structured document",
       "expectedMarkdown": "generated/phase2.md.golden"
+    },
+    {
+      "path": "generated/contents.pdf",
+      "sha256": "17b90f8045a01395c9e13a5302dc3732aa65030a2254ba2a83e8e7a8f152417d",
+      "purpose": "End-to-end coverage of aligned leaderless contents rows, cross-page contents continuation, wrapped numbered headings, and internal navigation",
+      "features": [
+        "three pages",
+        "leaderless contents entries",
+        "far-right aligned page numbers",
+        "cross-page contents continuation",
+        "hierarchical contents",
+        "wrapped numbered heading",
+        "internal page link"
+      ],
+      "origin": "self-authored generated fixture",
+      "generationSource": "generated/generate.go",
+      "generationInstructions": "go run ./testdata/pdf/generated -fixture contents -output ./testdata/pdf/generated/contents.pdf",
+      "author": "TransmuteMD contributors",
+      "copyright": "Copyright (c) 2026 TransmuteMD contributors",
+      "license": "MIT",
+      "expectedPageCount": 3,
+      "expectedText": "Release profile and supported products",
+      "expectedMarkdown": "generated/contents.md.golden"
     }
   ]
 }

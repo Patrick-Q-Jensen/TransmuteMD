@@ -60,6 +60,11 @@ func TestGeneratedPDFsMatchMarkdownGoldens(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:   "contents",
+			pdf:    "contents.pdf",
+			golden: "contents.md.golden",
+		},
 	}
 
 	for _, test := range tests {

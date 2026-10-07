@@ -36,6 +36,10 @@ const (
 	maximumFieldWidthRatio  = 0.25
 	maximumFieldHeightRatio = 0.1
 	maximumFieldGapRatio    = 0.04
+	contentsPageZoneRatio   = 0.7
+	contentsAlignRatio      = 0.75
+	minimumGeometricEntries = 2
+	headingScaleTolerance   = 0.1
 )
 
 var errNilLayout = errors.New("layout must not be nil")
@@ -72,20 +76,30 @@ func (*BasicAnalyzer) Analyze(
 	}
 
 	pages := make([]analyzedPage, 0, len(layout.Pages))
+	allowContentsContinuation := false
 	for _, page := range layout.Pages {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("analyze page %d: %w", page.Number, err)
 		}
 
-		lines, tableFallbacks, diagnostics, err := analyzePageLines(ctx, page)
+		lines, tableFallbacks, diagnostics, err := analyzePageLines(
+			ctx,
+			page,
+			allowContentsContinuation,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("analyze page %d: %w", page.Number, err)
 		}
+		isContentsContinuation := allowContentsContinuation &&
+			hasContentsEntries(lines) &&
+			!hasContentsHeading(lines)
+		allowContentsContinuation = contentsReachPageBottom(lines, page.Height)
 		pages = append(pages, analyzedPage{
-			page:           page,
-			lines:          lines,
-			tableFallbacks: tableFallbacks,
-			diagnostics:    diagnostics,
+			page:                 page,
+			lines:                lines,
+			tableFallbacks:       tableFallbacks,
+			diagnostics:          diagnostics,
+			contentsContinuation: isContentsContinuation,
 		})
 	}
 	if err := suppressRepeatedPageFurniture(ctx, pages); err != nil {
@@ -109,6 +123,9 @@ func (*BasicAnalyzer) Analyze(
 		blocks, err := groupBlocks(ctx, page.lines)
 		if err != nil {
 			return nil, fmt.Errorf("analyze page %d: %w", page.page.Number, err)
+		}
+		if page.contentsContinuation {
+			blocks = mergeContentsContinuation(result.Blocks, blocks)
 		}
 		result.Blocks = append(result.Blocks, blocks...)
 		pageBlocks[page.page.Number-1] = blockRange{
@@ -145,13 +162,15 @@ type textLine struct {
 	inTable     bool
 	table       *document.Table
 	field       *document.Field
+	contents    *detectedContentsEntry
 }
 
 type analyzedPage struct {
-	page           document.Page
-	lines          []textLine
-	tableFallbacks []document.Rectangle
-	diagnostics    []document.Diagnostic
+	page                 document.Page
+	lines                []textLine
+	tableFallbacks       []document.Rectangle
+	diagnostics          []document.Diagnostic
+	contentsContinuation bool
 }
 
 type detectedContentsEntry struct {
@@ -182,6 +201,7 @@ func contentsEntryTarget(lines []textLine) document.LinkTarget {
 func analyzePageLines(
 	ctx context.Context,
 	page document.Page,
+	allowContentsContinuation bool,
 ) ([]textLine, []document.Rectangle, []document.Diagnostic, error) {
 	runs := make([]orderedRun, 0, len(page.TextRuns))
 	ambiguousLink := false
@@ -241,6 +261,7 @@ func analyzePageLines(
 		}
 	}
 	slices.SortStableFunc(lines, compareLines)
+	lines = prepareContentsLines(lines, page.Width, allowContentsContinuation)
 	lines = orderColumns(lines)
 	for tableIndex, table := range tables {
 		var tableLines []int
@@ -381,7 +402,7 @@ func tableLikeRegions(lines []textLine) []document.Rectangle {
 		start = -1
 	}
 	for index, line := range lines {
-		if !line.inTable && lineLargeGapCount(line) >= 2 {
+		if !line.inTable && line.contents == nil && lineLargeGapCount(line) >= 2 {
 			if start < 0 {
 				start = index
 			}
@@ -709,6 +730,417 @@ func compareLines(left, right textLine) int {
 	return compareFloat(left.left, right.left)
 }
 
+type geometricContentsCandidate struct {
+	titleIndex int
+	consumed   int
+	line       textLine
+	entry      detectedContentsEntry
+	pageRight  float64
+}
+
+func prepareContentsLines(
+	lines []textLine,
+	pageWidth float64,
+	allowContinuation bool,
+) []textLine {
+	heading := -1
+	for index, line := range lines {
+		if strings.EqualFold(strings.TrimSpace(line.text), "contents") {
+			heading = index
+			break
+		}
+	}
+	if heading < 0 && !allowContinuation || pageWidth <= 0 {
+		return lines
+	}
+
+	var candidates []geometricContentsCandidate
+	started := false
+	start := 0
+	if heading >= 0 {
+		start = heading + 1
+	}
+	for index := start; index < len(lines); {
+		candidate, ok := geometricContentsCandidateAt(
+			lines,
+			index,
+			pageWidth,
+		)
+		if !ok {
+			if started {
+				break
+			}
+			index++
+			continue
+		}
+		started = true
+		candidates = append(candidates, candidate)
+		index += candidate.consumed
+	}
+	if len(candidates) < minimumGeometricEntries ||
+		!alignedContentsPageNumbers(candidates) {
+		return lines
+	}
+
+	hasRoot := false
+	rootLeft := math.Inf(1)
+	for _, candidate := range candidates {
+		if candidate.entry.depth == 1 {
+			hasRoot = true
+			rootLeft = math.Min(rootLeft, candidate.line.left)
+		}
+	}
+	if !hasRoot && !allowContinuation {
+		return lines
+	}
+	if hasRoot {
+		for _, candidate := range candidates {
+			if candidate.entry.depth == 1 {
+				continue
+			}
+			tolerance := candidate.line.scale() * listMarkerAlignRatio
+			if candidate.line.left <= rootLeft+tolerance {
+				return lines
+			}
+		}
+	}
+
+	byTitle := make(map[int]geometricContentsCandidate, len(candidates))
+	skipped := make(map[int]struct{}, len(candidates)*2)
+	for _, candidate := range candidates {
+		byTitle[candidate.titleIndex] = candidate
+		for offset := 1; offset < candidate.consumed; offset++ {
+			skipped[candidate.titleIndex+offset] = struct{}{}
+		}
+	}
+
+	result := make([]textLine, 0, len(lines)-len(skipped))
+	for index, line := range lines {
+		if _, skip := skipped[index]; skip {
+			continue
+		}
+		candidate, ok := byTitle[index]
+		if !ok {
+			result = append(result, line)
+			continue
+		}
+		entry := candidate.entry
+		candidate.line.contents = &entry
+		result = append(result, candidate.line)
+	}
+	return result
+}
+
+func hasContentsEntries(lines []textLine) bool {
+	for _, line := range lines {
+		if line.contents != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func hasContentsHeading(lines []textLine) bool {
+	for _, line := range lines {
+		if strings.EqualFold(strings.TrimSpace(line.text), "contents") {
+			return true
+		}
+	}
+	return false
+}
+
+func contentsReachPageBottom(lines []textLine, pageHeight float64) bool {
+	if pageHeight <= 0 {
+		return false
+	}
+	lastBottom := 0.0
+	for _, line := range lines {
+		if line.contents != nil {
+			lastBottom = math.Max(lastBottom, line.bottom)
+		}
+	}
+	return lastBottom >= pageHeight*(1-pageFurnitureBandRatio)
+}
+
+func geometricContentsCandidateAt(
+	lines []textLine,
+	index int,
+	pageWidth float64,
+) (geometricContentsCandidate, bool) {
+	line := lines[index]
+	if strings.Contains(line.text, "...") {
+		return geometricContentsCandidate{}, false
+	}
+
+	title := ""
+	page := 0
+	pageRight := 0.0
+	consumed := 1
+	targetLines := []textLine{line}
+	if sameLineTitle, sameLinePage, right, ok :=
+		splitGeometricContentsPage(line, pageWidth); ok {
+		title = sameLineTitle
+		page = sameLinePage
+		pageRight = right
+	} else {
+		if index+1 >= len(lines) {
+			return geometricContentsCandidate{}, false
+		}
+		pageLine := lines[index+1]
+		var ok bool
+		page, ok = positivePageNumber(pageLine.text)
+		if !ok ||
+			pageLine.left < pageWidth*contentsPageZoneRatio ||
+			!linesShareVerticalPosition(line, pageLine) ||
+			!hasContentsPageGap(line.right, pageLine.left, line.scale(), pageWidth) {
+			return geometricWrappedContentsCandidateAt(lines, index, pageWidth)
+		}
+		title = strings.TrimSpace(line.text)
+		pageRight = pageLine.right
+		consumed = 2
+		targetLines = append(targetLines, pageLine)
+		line.runs = append(line.runs, pageLine.runs...)
+		line.top = math.Min(line.top, pageLine.top)
+		line.bottom = math.Max(line.bottom, pageLine.bottom)
+		line.right = math.Max(line.right, pageLine.right)
+	}
+
+	numberEnd, depth, ok := numberedPrefix(title)
+	if !ok {
+		return geometricContentsCandidate{}, false
+	}
+	entryTitle := strings.TrimSpace(title[numberEnd:])
+	if !hasSemanticHeadingText(entryTitle) {
+		return geometricContentsCandidate{}, false
+	}
+	entry := detectedContentsEntry{
+		number:    strings.TrimSpace(title[:numberEnd]),
+		title:     entryTitle,
+		page:      page,
+		depth:     depth,
+		lineCount: 1,
+		target:    contentsEntryTarget(targetLines),
+	}
+	line.text = entry.number + " " + entry.title
+	return geometricContentsCandidate{
+		titleIndex: index,
+		consumed:   consumed,
+		line:       line,
+		entry:      entry,
+		pageRight:  pageRight,
+	}, true
+}
+
+func geometricWrappedContentsCandidateAt(
+	lines []textLine,
+	index int,
+	pageWidth float64,
+) (geometricContentsCandidate, bool) {
+	if index+1 >= len(lines) {
+		return geometricContentsCandidate{}, false
+	}
+	first := lines[index]
+	firstText := strings.TrimSpace(first.text)
+	numberEnd, depth, ok := numberedPrefix(firstText)
+	if !ok {
+		return geometricContentsCandidate{}, false
+	}
+	firstTitle := strings.TrimSpace(firstText[numberEnd:])
+	second := lines[index+1]
+	if !hasSemanticHeadingText(firstTitle) ||
+		!hasSemanticHeadingText(second.text) ||
+		strings.Contains(second.text, "...") {
+		return geometricContentsCandidate{}, false
+	}
+	if _, _, numbered := numberedPrefix(strings.TrimSpace(second.text)); numbered {
+		return geometricContentsCandidate{}, false
+	}
+	scale := math.Max(first.scale(), second.scale())
+	if scale <= 0 ||
+		second.top-first.bottom > scale*paragraphGapRatio ||
+		second.left <= first.left+scale*listMarkerAlignRatio {
+		return geometricContentsCandidate{}, false
+	}
+
+	secondTitle := ""
+	page := 0
+	pageRight := 0.0
+	consumed := 2
+	targetLines := []textLine{first, second}
+	if title, sameLinePage, right, ok :=
+		splitGeometricContentsPage(second, pageWidth); ok {
+		secondTitle = title
+		page = sameLinePage
+		pageRight = right
+	} else {
+		if index+2 >= len(lines) {
+			return geometricContentsCandidate{}, false
+		}
+		pageLine := lines[index+2]
+		page, ok = positivePageNumber(pageLine.text)
+		if !ok ||
+			pageLine.left < pageWidth*contentsPageZoneRatio ||
+			!linesShareVerticalPosition(second, pageLine) ||
+			!hasContentsPageGap(
+				second.right,
+				pageLine.left,
+				second.scale(),
+				pageWidth,
+			) {
+			return geometricContentsCandidate{}, false
+		}
+		secondTitle = strings.TrimSpace(second.text)
+		pageRight = pageLine.right
+		consumed = 3
+		targetLines = append(targetLines, pageLine)
+		second.runs = append(second.runs, pageLine.runs...)
+		second.top = math.Min(second.top, pageLine.top)
+		second.bottom = math.Max(second.bottom, pageLine.bottom)
+		second.right = math.Max(second.right, pageLine.right)
+	}
+	if !hasSemanticHeadingText(secondTitle) {
+		return geometricContentsCandidate{}, false
+	}
+
+	line := first
+	line.runs = append(line.runs, second.runs...)
+	line.top = math.Min(line.top, second.top)
+	line.bottom = math.Max(line.bottom, second.bottom)
+	line.right = math.Max(line.right, second.right)
+	entry := detectedContentsEntry{
+		number:    strings.TrimSpace(firstText[:numberEnd]),
+		title:     firstTitle + " " + secondTitle,
+		page:      page,
+		depth:     depth,
+		lineCount: 1,
+		target:    contentsEntryTarget(targetLines),
+	}
+	line.text = entry.number + " " + entry.title
+	return geometricContentsCandidate{
+		titleIndex: index,
+		consumed:   consumed,
+		line:       line,
+		entry:      entry,
+		pageRight:  pageRight,
+	}, true
+}
+
+func splitGeometricContentsPage(
+	line textLine,
+	pageWidth float64,
+) (string, int, float64, bool) {
+	if len(line.runs) < 2 {
+		return "", 0, 0, false
+	}
+
+	pageStart := len(line.runs)
+	var pageParts []string
+	for index := len(line.runs) - 1; index >= 0; index-- {
+		text := strings.TrimSpace(line.runs[index].text)
+		if text == "" {
+			continue
+		}
+		if !allDigits(text) {
+			break
+		}
+		pageStart = index
+		pageParts = append(pageParts, text)
+	}
+	if pageStart <= 0 || pageStart >= len(line.runs) {
+		return "", 0, 0, false
+	}
+	slices.Reverse(pageParts)
+	pageText := strings.Join(pageParts, "")
+	page, ok := positivePageNumber(pageText)
+	if !ok {
+		return "", 0, 0, false
+	}
+
+	pageRun := line.runs[pageStart].run
+	titleRun := line.runs[pageStart-1].run
+	if pageRun.Bounds.Left < pageWidth*contentsPageZoneRatio ||
+		!hasContentsPageGap(
+			titleRun.Bounds.Right,
+			pageRun.Bounds.Left,
+			line.scale(),
+			pageWidth,
+		) {
+		return "", 0, 0, false
+	}
+	text := strings.TrimSpace(line.text)
+	if !strings.HasSuffix(text, pageText) {
+		return "", 0, 0, false
+	}
+	title := strings.TrimSpace(text[:len(text)-len(pageText)])
+	if title == "" {
+		return "", 0, 0, false
+	}
+	return title, page, line.runs[len(line.runs)-1].run.Bounds.Right, true
+}
+
+func positivePageNumber(text string) (int, bool) {
+	text = strings.TrimSpace(text)
+	if text == "" || !allDigits(text) {
+		return 0, false
+	}
+	page, err := strconv.Atoi(text)
+	return page, err == nil && page > 0
+}
+
+func allDigits(text string) bool {
+	for index := range text {
+		if text[index] < '0' || text[index] > '9' {
+			return false
+		}
+	}
+	return text != ""
+}
+
+func hasContentsPageGap(
+	titleRight,
+	pageLeft,
+	scale,
+	pageWidth float64,
+) bool {
+	return pageLeft-titleRight > math.Max(
+		scale*columnGutterScaleRatio,
+		pageWidth*columnGutterWidthRatio,
+	)
+}
+
+func linesShareVerticalPosition(left, right textLine) bool {
+	overlap := math.Min(left.bottom, right.bottom) - math.Max(left.top, right.top)
+	height := math.Min(left.bottom-left.top, right.bottom-right.top)
+	return height > 0 && overlap >= height*minimumLineOverlapRatio
+}
+
+func alignedContentsPageNumbers(candidates []geometricContentsCandidate) bool {
+	rights := make([]float64, len(candidates))
+	scales := make([]float64, 0, len(candidates))
+	for index, candidate := range candidates {
+		rights[index] = candidate.pageRight
+		if scale := candidate.line.scale(); scale > 0 {
+			scales = append(scales, scale)
+		}
+	}
+	slices.Sort(rights)
+	reference := rights[(len(rights)-1)/2]
+	tolerance := 1.0
+	if len(scales) > 0 {
+		slices.Sort(scales)
+		tolerance = math.Max(
+			tolerance,
+			scales[(len(scales)-1)/2]*contentsAlignRatio,
+		)
+	}
+	for _, right := range rights {
+		if math.Abs(right-reference) > tolerance {
+			return false
+		}
+	}
+	return true
+}
+
 func orderColumns(lines []textLine) []textLine {
 	if len(lines) < minimumColumnLines*2 {
 		return lines
@@ -913,8 +1345,8 @@ func normalizeFurnitureText(text string) string {
 
 func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error) {
 	blocks := make([]document.Block, 0, len(lines))
-	headingLevels := detectHeadingLevels(lines)
 	contentsEntries := detectContentsEntries(lines)
+	headingLevels := detectHeadingLevels(lines, contentsEntries)
 	pageLeft, pageRight := textMargins(lines, headingLevels, contentsEntries)
 	var paragraph []textLine
 	var list *pendingList
@@ -972,20 +1404,22 @@ func groupBlocks(ctx context.Context, lines []textLine) ([]document.Block, error
 		if headingLevels[index] != 0 {
 			flushParagraph()
 			flushList()
+			level := headingLevels[index]
 			text := line.text
 			links := slices.Clone(line.links)
 			if index+1 < len(lines) &&
+				contentsEntries[index+1] == nil &&
 				isNumberedHeadingContinuation(
 					line,
 					lines[index+1],
-					headingLevels[index],
+					level,
 					headingLevels[index+1],
 				) {
 				text, links = joinHeadingLines(text, links, lines[index+1])
 				index++
 			}
 			blocks = append(blocks, &document.Heading{
-				Level: headingLevels[index],
+				Level: level,
 				Text:  text,
 				Links: links,
 			})
@@ -1045,6 +1479,105 @@ func buildContentsList(
 		Kind:  document.ListKindUnordered,
 		Items: items,
 	}, index
+}
+
+func mergeContentsContinuation(
+	previous,
+	current []document.Block,
+) []document.Block {
+	if len(previous) == 0 || len(current) == 0 {
+		return current
+	}
+	target, ok := previous[len(previous)-1].(*document.List)
+	if !ok || target.Kind != document.ListKindUnordered {
+		return current
+	}
+	continuation, ok := current[0].(*document.List)
+	if !ok || continuation.Kind != document.ListKindUnordered {
+		return current
+	}
+
+	items := flattenContentsItems(continuation.Items)
+	merged := *target
+	merged.Items = cloneContentsItems(target.Items)
+	for _, item := range items {
+		_, depth, ok := numberedPrefix(item.Text)
+		if !ok || !appendContentsItemAtDepth(&merged, item, depth) {
+			return current
+		}
+	}
+	*target = merged
+	return current[1:]
+}
+
+func cloneContentsItems(items []document.ListItem) []document.ListItem {
+	result := make([]document.ListItem, len(items))
+	for index, item := range items {
+		result[index] = item
+		result[index].Links = slices.Clone(item.Links)
+		result[index].Children = make([]document.List, len(item.Children))
+		for childIndex, child := range item.Children {
+			result[index].Children[childIndex] = child
+			result[index].Children[childIndex].Items = cloneContentsItems(child.Items)
+		}
+	}
+	return result
+}
+
+func flattenContentsItems(items []document.ListItem) []document.ListItem {
+	var result []document.ListItem
+	for _, item := range items {
+		children := item.Children
+		item.Children = nil
+		result = append(result, item)
+		for _, child := range children {
+			result = append(result, flattenContentsItems(child.Items)...)
+		}
+	}
+	return result
+}
+
+func appendContentsItemAtDepth(
+	list *document.List,
+	item document.ListItem,
+	depth int,
+) bool {
+	if depth < 1 {
+		return false
+	}
+	if depth == 1 {
+		list.Items = append(list.Items, item)
+		return true
+	}
+
+	current := list
+	for currentDepth := 1; currentDepth < depth; currentDepth++ {
+		if len(current.Items) == 0 {
+			return false
+		}
+		parent := &current.Items[len(current.Items)-1]
+		if currentDepth == depth-1 {
+			if len(parent.Children) == 0 {
+				parent.Children = append(parent.Children, document.List{
+					Kind: document.ListKindUnordered,
+				})
+			}
+			child := &parent.Children[len(parent.Children)-1]
+			if child.Kind != document.ListKindUnordered {
+				return false
+			}
+			child.Items = append(child.Items, item)
+			return true
+		}
+		if len(parent.Children) == 0 {
+			return false
+		}
+		current = &parent.Children[len(parent.Children)-1]
+		if current.Kind != document.ListKindUnordered {
+			return false
+		}
+	}
+	return false
 }
 
 func buildContentsItems(
@@ -1278,7 +1811,12 @@ func isNumberedHeadingContinuation(
 	currentLevel,
 	nextLevel int,
 ) bool {
-	if currentLevel == 0 || currentLevel != nextLevel {
+	if currentLevel == 0 ||
+		nextLevel != 0 && currentLevel != nextLevel ||
+		next.breakBefore ||
+		next.inTable ||
+		next.field != nil ||
+		!hasSemanticHeadingText(next.text) {
 		return false
 	}
 	if _, numbered := numberedHeadingDepth(current.text); !numbered {
@@ -1287,8 +1825,16 @@ func isNumberedHeadingContinuation(
 	if _, numbered := numberedHeadingDepth(next.text); numbered {
 		return false
 	}
-	scale := math.Max(current.scale(), next.scale())
-	return scale > 0 &&
+	if _, listItem := detectListItem(next.text); listItem {
+		return false
+	}
+	currentScale := current.scale()
+	nextScale := next.scale()
+	scale := math.Max(currentScale, nextScale)
+	return currentScale > 0 &&
+		nextScale > 0 &&
+		math.Abs(currentScale-nextScale) <= scale*headingScaleTolerance &&
+		next.top >= current.top &&
 		next.top-current.bottom <= scale*paragraphGapRatio &&
 		current.weight() == next.weight()
 }
@@ -1476,9 +2022,11 @@ func textMargins(
 	return left, right
 }
 
-func detectHeadingLevels(lines []textLine) []int {
+func detectHeadingLevels(
+	lines []textLine,
+	contentsEntries []*detectedContentsEntry,
+) []int {
 	levels := make([]int, len(lines))
-	contentsEntries := detectContentsEntries(lines)
 	bodyScale := medianLineScale(lines)
 	bodyWeight := medianLineWeight(lines)
 	if bodyScale <= 0 {
@@ -1570,38 +2118,56 @@ func numberedPrefix(text string) (int, int, bool) {
 func detectContentsEntries(lines []textLine) []*detectedContentsEntry {
 	entries := make([]*detectedContentsEntry, len(lines))
 	contentsHeading := -1
+	hasPreparedEntries := false
 	for index, line := range lines {
+		hasPreparedEntries = hasPreparedEntries || line.contents != nil
 		if strings.EqualFold(strings.TrimSpace(line.text), "contents") {
 			contentsHeading = index
 			break
 		}
 	}
-	if contentsHeading < 0 {
+	if contentsHeading < 0 && !hasPreparedEntries {
 		return entries
 	}
 
 	rootLeft := math.Inf(1)
-	for index := contentsHeading + 1; index < len(lines); index++ {
-		entry, ok := detectContentsEntry(lines[index].text)
-		if !ok && index+1 < len(lines) {
-			entry, ok = detectWrappedContentsEntry(lines[index], lines[index+1])
+	start := 0
+	if contentsHeading >= 0 {
+		start = contentsHeading + 1
+	}
+	for index := start; index < len(lines); index++ {
+		var entry detectedContentsEntry
+		ok := false
+		if lines[index].contents != nil {
+			entry = *lines[index].contents
+			ok = true
+		} else {
+			entry, ok = detectContentsEntry(lines[index].text)
+			if !ok && index+1 < len(lines) {
+				entry, ok = detectWrappedContentsEntry(lines[index], lines[index+1])
+			}
 		}
 		if !ok {
 			continue
 		}
-		entry.target = contentsEntryTarget(lines[index : index+entry.lineCount])
+		if entry.target.Kind == 0 {
+			entry.target = contentsEntryTarget(lines[index : index+entry.lineCount])
+		}
 		entries[index] = &entry
 		if entry.depth == 1 {
 			rootLeft = math.Min(rootLeft, lines[index].left)
 		}
 		index += entry.lineCount - 1
 	}
-	if math.IsInf(rootLeft, 1) {
+	if math.IsInf(rootLeft, 1) && !hasPreparedEntries {
 		return make([]*detectedContentsEntry, len(lines))
 	}
 
 	for index, entry := range entries {
-		if entry == nil || entry.depth == 1 {
+		if entry == nil ||
+			entry.depth == 1 ||
+			lines[index].contents != nil ||
+			math.IsInf(rootLeft, 1) {
 			continue
 		}
 		tolerance := lines[index].scale() * listMarkerAlignRatio

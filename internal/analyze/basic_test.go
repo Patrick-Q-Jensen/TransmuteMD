@@ -814,6 +814,105 @@ func TestBasicAnalyzerAssociatesContentsLinkWithHeadingAnchor(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzerBuildsLeaderlessContentsAndJoinsTargetHeading(t *testing.T) {
+	t.Parallel()
+
+	contents := textRun("Contents", 10, 10, 100, 30)
+	contents.Style = document.TextStyle{FontSize: 24, FontWeight: 700}
+	firstHeadingLine := textRun("2. Release profile and", 10, 80, 180, 100)
+	firstHeadingLine.Style = document.TextStyle{FontSize: 20, FontWeight: 700}
+	secondHeadingLine := textRun("supported products", 40, 108, 170, 128)
+	secondHeadingLine.Style = firstHeadingLine.Style
+	layout := &document.Layout{
+		Pages: []document.Page{
+			{
+				Number: 1,
+				Width:  220,
+				Height: 220,
+				TextRuns: []document.TextRun{
+					contents,
+					textRun("1. Introduction", 10, 44, 90, 54),
+					textRun("2", 196, 44, 202, 54),
+					textRun("2. Release profile and supported products", 10, 58, 175, 68),
+					textRun("2", 196, 58, 202, 68),
+				},
+				Links: []document.LinkAnnotation{
+					{
+						Bounds: document.Rectangle{
+							Left: 8, Top: 56, Right: 204, Bottom: 70,
+						},
+						Target: document.LinkTarget{
+							Kind: document.LinkTargetPage,
+							Page: 2,
+						},
+					},
+				},
+			},
+			{
+				Number: 2,
+				Width:  220,
+				Height: 240,
+				TextRuns: []document.TextRun{
+					textRun("Preface text continues", 10, 10, 130, 20),
+					textRun("across another line", 10, 24, 120, 34),
+					firstHeadingLine,
+					secondHeadingLine,
+					textRun("N/A", 40, 136, 60, 146),
+					textRun("Following body text.", 10, 150, 130, 160),
+				},
+			},
+		},
+	}
+
+	result, err := analyze.NewBasicAnalyzer().Analyze(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("Analyze() returned an unexpected error: %v", err)
+	}
+	if got, want := len(result.Blocks), 5; got != want {
+		t.Fatalf("block count = %d, want %d: %#v", got, want, result.Blocks)
+	}
+	list, ok := result.Blocks[1].(*document.List)
+	if !ok {
+		t.Fatalf("block 2 has type %T, want *document.List", result.Blocks[1])
+	}
+	if got, want := len(list.Items), 2; got != want {
+		t.Fatalf("contents item count = %d, want %d", got, want)
+	}
+	if got, want := list.Items[1].Text,
+		"2. Release profile and supported products"; got != want {
+		t.Fatalf("contents item text = %q, want %q", got, want)
+	}
+	heading, ok := result.Blocks[3].(*document.Heading)
+	if !ok {
+		t.Fatalf("block 4 has type %T, want *document.Heading", result.Blocks[3])
+	}
+	if got, want := heading.Level, 1; got != want {
+		t.Fatalf("heading level = %d, want %d", got, want)
+	}
+	if got, want := heading.Text,
+		"2. Release profile and supported products"; got != want {
+		t.Fatalf("heading text = %q, want %q", got, want)
+	}
+	if got, want := heading.Anchor,
+		"2-release-profile-and-supported-products"; got != want {
+		t.Fatalf("heading anchor = %q, want %q", got, want)
+	}
+	if got, want := list.Items[1].Links[0].Target,
+		(document.LinkTarget{
+			Kind: document.LinkTargetNamed,
+			Name: "2-release-profile-and-supported-products",
+		}); got != want {
+		t.Fatalf("contents target = %+v, want %+v", got, want)
+	}
+	paragraph, ok := result.Blocks[4].(*document.Paragraph)
+	if !ok {
+		t.Fatalf("block 5 has type %T, want *document.Paragraph", result.Blocks[4])
+	}
+	if got, want := paragraph.Text, "N/A Following body text."; got != want {
+		t.Fatalf("body paragraph = %q, want %q", got, want)
+	}
+}
+
 func TestBasicAnalyzerDoesNotPromoteOnlyLineToHeading(t *testing.T) {
 	t.Parallel()
 

@@ -20,6 +20,7 @@ were made. They complement the current-state description in
 | [0010](0010-flatten-synchronized-table-records.md) | Flatten synchronized records in tall horizontal table bands | Accepted |
 | [0011](0011-unfold-stacked-field-bands.md) | Unfold synchronized label/value field bands | Accepted |
 | [0012](0012-recover-explicit-empty-fields.md) | Recover explicitly evidenced empty fields | Accepted |
+| [0013](0013-recognize-geometric-contents.md) | Recognize geometric contents rows before column ordering | Accepted |
 
 ## Process
 

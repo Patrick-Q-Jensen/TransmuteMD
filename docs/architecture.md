@@ -149,15 +149,31 @@ consistent level from 1 through 6; other headings use conservative size ratios
 for levels 1 through 3. Decorative-only lines and lines with large internal
 gaps characteristic of document-control metadata are not promoted. Ordinary
 emphasized lines remain paragraph text. A nearby, style-matched line following
-a numbered heading is joined as a wrapped title continuation.
+a numbered heading is joined as a wrapped title continuation even when the
+continuation does not independently have heading spacing. The continuation
+must have nearly the same font scale and the same weight, remain within normal
+heading line spacing, and not cross a contents, list, table, field, or column
+flow boundary. The numbered line retains the heading level.
 
 Contents entries are recognized after a contents heading when section
-numbering and indentation agree with dotted-leader text ending in a positive
-page number. A more deeply indented adjacent line can complete a wrapped
-entry. All signals are required so numbered body text and ordinary periods
-are not reclassified as navigation. Recognized entries become nested,
-engine-neutral unordered lists whose item text retains the section number and
-title while dropping dotted leaders and source page numbers.
+numbering and indentation agree with either dotted-leader text ending in a
+positive page number or a repeated geometric cohort of positive page-number
+runs aligned at the far-right page margin. Geometric recognition requires at
+least two vertically matched title/number rows with a common right edge and a
+root-level numbered entry. The complete cohort is validated before any row is
+changed. Accepted geometric rows are collapsed before generic column ordering
+so the page-number column cannot be mistaken for a separate reading flow. A
+more deeply indented adjacent line can complete a wrapped dotted-leader entry.
+
+A leaderless contents cohort may continue on the next physical page without a
+repeated contents heading only when the accepted cohort on the preceding page
+reaches the bottom content band. Its entries must independently satisfy the
+same repeated alignment evidence and are merged into the preceding hierarchy
+by their numbered depth. All other heading-free aligned numbers retain normal
+geometric reading order. Recognized entries become nested, engine-neutral
+unordered lists whose item text retains the section number and title while
+dropping dotted leaders and source page numbers. These criteria are governed
+by [ADR-0013](decisions/0013-recognize-geometric-contents.md).
 
 List inference recognizes common ASCII and Unicode unordered markers and
 decimal ordered markers followed by whitespace. Adjacent marker-aligned items
@@ -173,6 +189,7 @@ center gutter, at least two lines on each side, and vertically overlapping
 column content. Full-width lines delimit regions and remain in page order;
 within a detected region, the left column precedes the right column. Explicit
 flow boundaries prevent paragraphs and lists from merging across columns.
+Validated contents title/page rows are made atomic before this inference.
 Ambiguous layouts retain geometric row order rather than forcing a column
 interpretation.
 

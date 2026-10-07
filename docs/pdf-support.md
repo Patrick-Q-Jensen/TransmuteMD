@@ -12,7 +12,10 @@ can identify a specific non-fatal fallback.
 - Page rotation and character-level position, font, weight, italic, and
   rotation evidence exposed by PDFium.
 - Paragraphs and font/spacing-based headings.
-- Flat body lists and hierarchical contents lists.
+- Flat body lists and hierarchical contents lists, including dotted-leader
+  entries and repeated leaderless title/page rows aligned at the far-right
+  margin. A validated contents hierarchy may continue onto the immediately
+  following page without repeating its heading.
 - Clear two-column regions separated by a center gutter.
 - Regular ruled tables with a complete rectangular grid, a non-empty header
   row, and unambiguous cell text, including intentionally empty body rows.

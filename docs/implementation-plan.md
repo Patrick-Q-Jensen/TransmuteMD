@@ -216,6 +216,22 @@ semantic models established by earlier work.
 - [x] Add engine-neutral nested-list semantics and render hierarchical
       contents without leader dots.
 
+### Group 2 follow-up: Geometric contents and wrapped headings
+
+- [x] Recognize repeated leaderless contents rows from numbered titles,
+      vertically matched far-right page numbers, and consistent cohort
+      alignment before generic column ordering.
+- [x] Continue a validated contents hierarchy across an immediately following
+      page only when the preceding cohort reaches the bottom content band.
+- [x] Join a nearby style-matched continuation to a numbered heading even when
+      the continuation does not independently satisfy heading-spacing
+      criteria, while retaining the numbered heading level.
+- [x] Add engine-neutral positive and negative tests plus a self-authored
+      end-to-end fixture covering column-order protection, cross-page nesting,
+      wrapped headings, and internal navigation.
+- [x] Verify the private requirement sample and the existing document corpus
+      without committing private inputs or generated Markdown.
+
 ### Group 3: Internal document navigation
 
 - [x] Extend engine-neutral links to represent internal page and named
