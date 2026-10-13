@@ -335,7 +335,11 @@ The initial scope is defined by
 [ADR-0014](decisions/0014-set-initial-release-scope.md). Binary distribution
 remains blocked by the Phase 1 PDFium audit, including for draft releases.
 
-- [ ] Build for every selected operating system and architecture.
+- [x] Build for every selected operating system and architecture: add an
+      explicit five-target, CGo-disabled CI cross-build matrix with trimmed
+      source paths and non-empty executable/build-metadata checks. All five
+      builds passed locally; GitHub-hosted execution remains pending. No
+      executables are uploaded, cached, or published.
 - [ ] Verify each artifact natively in a clean environment, including
       conversion and transactional output; record tested OS versions and
       minimum requirements.
@@ -445,3 +449,4 @@ A task is complete when:
 | 2026-09-28 | Unfolded synchronized label/value field bands into independent Markdown tables and retained fallback for irregular stamps. |
 | 2026-09-28 | Preserved repeated empty table controls and explicitly labeled ruled blanks while leaving unlabeled signature bands and ambiguous fields unmodeled. |
 | 2026-10-13 | Accepted ADR-0014: selected five initial release targets, `v0.1.0` with Semantic Versioning, and on-demand tagged draft releases with owner approval; deferred signing while retaining the PDFium distribution blocker. |
+| 2026-10-13 | Added five-target CI cross-build coverage and a manual workflow trigger; verified local binaries and target/CGo/trimpath metadata while leaving hosted execution, native artifact verification, and distribution pending. |

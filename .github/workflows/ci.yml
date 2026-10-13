@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -56,3 +57,58 @@ jobs:
         run: go run ./testdata/pdf/validate.go
       - name: Build
         run: go build ./...
+
+  cross-build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            executable: transmutemd.exe
+          - goos: linux
+            goarch: amd64
+            executable: transmutemd
+          - goos: linux
+            goarch: arm64
+            executable: transmutemd
+          - goos: darwin
+            goarch: amd64
+            executable: transmutemd
+          - goos: darwin
+            goarch: arm64
+            executable: transmutemd
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      CGO_ENABLED: "0"
+      EXECUTABLE: ${{ matrix.executable }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build and verify executable metadata
+        shell: bash
+        run: |
+          output_dir="dist/${GOOS}-${GOARCH}"
+          output="${output_dir}/${EXECUTABLE}"
+          mkdir -p "$output_dir"
+          go build -trimpath -o "$output" ./cmd/transmutemd
+          if [ ! -s "$output" ]; then
+            echo "::error::Missing or empty executable: $output"
+            exit 1
+          fi
+          metadata="$(go version -m "$output")"
+          printf '%s\n' "$metadata"
+          for setting in "GOOS=$GOOS" "GOARCH=$GOARCH" "CGO_ENABLED=0" "-trimpath=true"; do
+            if ! grep -Fqx $'\tbuild\t'"$setting" <<< "$metadata"; then
+              echo "::error::Executable metadata does not contain $setting"
+              exit 1
+            fi
+          done

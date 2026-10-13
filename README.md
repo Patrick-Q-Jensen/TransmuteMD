@@ -13,8 +13,9 @@ pipeline.
 
 The converter, robustness, and document-fidelity work are complete in the
 [implementation plan](docs/implementation-plan.md). The project is preparing
-for its first public release; release builds, target verification, and
-automation remain planned work.
+for its first public release. Five-target build coverage is implemented;
+native artifact verification, release packaging, and publication automation
+remain planned work.
 
 The selected initial release targets are Windows x64, Linux x64/ARM64, and
 macOS Intel/Apple Silicon. The first public version will be `v0.1.0`, using
@@ -108,8 +109,18 @@ go test -run=^$ -bench=BenchmarkGeneratedPDFConversion -benchmem ./internal/app
 go run ./cmd/transmutemd --help
 ```
 
-GitHub Actions runs formatting checks, vetting, tests, and builds on Windows,
-Linux, and macOS.
+GitHub Actions runs formatting checks and native quality checks (vetting,
+tests, fixture validation, and builds) on Windows, Linux, and macOS. A separate
+Linux-hosted job cross-compiles the CLI for all five selected release targets
+with CGo disabled and `-trimpath`, then verifies that each executable is
+non-empty and its Go build metadata matches the requested target and flags.
+Cross-compilation does not establish native runtime support.
+
+CI runs on pushes and pull requests. Once the workflow is on the default
+branch, it can also be started from GitHub's **Actions** tab by selecting
+**CI**, then **Run workflow**. The cross-build job does not upload or cache
+executables or publish releases; binary distribution remains blocked by the
+PDFium audit.
 
 AI-assisted changes follow [`AGENTS.md`](AGENTS.md). The file identifies the
 authoritative project context, architectural constraints, required checks, and
