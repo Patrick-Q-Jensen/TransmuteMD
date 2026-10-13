@@ -13,9 +13,9 @@ pipeline.
 
 The converter, robustness, and document-fidelity work are complete in the
 [implementation plan](docs/implementation-plan.md). The project is preparing
-for its first public release. Five-target build coverage is implemented;
-native artifact verification, release packaging, and publication automation
-remain planned work.
+for its first public release. Five-target cross-build and native executable
+smoke coverage is implemented; GitHub-hosted target verification, release
+packaging, and publication automation remain pending.
 
 The selected initial release targets are Windows x64, Linux x64/ARM64, and
 macOS Intel/Apple Silicon. The first public version will be `v0.1.0`, using
@@ -116,9 +116,46 @@ with CGo disabled and `-trimpath`, then verifies that each executable is
 non-empty and its Go build metadata matches the requested target and flags.
 Cross-compilation does not establish native runtime support.
 
+Separate native smoke jobs build and execute the CLI on matching
+OS/architecture runners:
+
+| Target | Configured GitHub-hosted runner |
+|---|---|
+| Windows x64 | `windows-2025` |
+| Linux x64 | `ubuntu-24.04` |
+| Linux ARM64 | `ubuntu-24.04-arm` |
+| macOS Intel | `macos-15-intel` |
+| macOS Apple Silicon | `macos-15` |
+
+The smoke suite copies the executable and licensed fixtures into temporary
+directories and launches the executable with an allowlisted environment,
+empty tool search path, and isolated home and temporary directories. It
+checks exact Markdown goldens and warnings, file and stdout output, CLI error
+codes, overwrite protection, and output/input preservation and temporary-file
+cleanup after failures. Executable metadata must match the native platform,
+with CGo disabled and trimmed source paths.
+
+Run the same suite locally with:
+
+```console
+go test -count=1 -run '^TestExecutableSmoke$' -v ./cmd/transmutemd
+```
+
+By default it builds the CLI; to check an already built executable, set the
+test-only `TRANSMUTEMD_SMOKE_EXECUTABLE` environment variable to its absolute
+path. The normal `go test ./...` command also includes this suite.
+
+Native jobs record their actual OS versions, architecture, and available
+runner-image metadata in logs and the workflow summary. Configured runners
+are test baselines, not minimum supported OS guarantees. Hosted results and a
+minimum OS support policy remain pending. Fresh GitHub runners include
+development tools; the restricted subprocess environment checks standalone
+conversion but does not emulate a completely pristine OS or downloaded-binary
+SmartScreen/Gatekeeper behavior.
+
 CI runs on pushes and pull requests. Once the workflow is on the default
 branch, it can also be started from GitHub's **Actions** tab by selecting
-**CI**, then **Run workflow**. The cross-build job does not upload or cache
+**CI**, then **Run workflow**. The build and smoke jobs do not upload or cache
 executables or publish releases; binary distribution remains blocked by the
 PDFium audit.
 

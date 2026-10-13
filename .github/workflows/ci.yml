@@ -112,3 +112,86 @@ jobs:
               exit 1
             fi
           done
+
+  native-smoke:
+    name: Native smoke (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            goos: windows
+            goarch: amd64
+            executable: transmutemd.exe
+          - runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            executable: transmutemd
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            executable: transmutemd
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            executable: transmutemd
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+            executable: transmutemd
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      CGO_ENABLED: "0"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify native host and record environment
+        shell: bash
+        run: |
+          host_os="$(go env GOHOSTOS)"
+          host_arch="$(go env GOHOSTARCH)"
+          if [ "$host_os" != "$GOOS" ] || [ "$host_arch" != "$GOARCH" ]; then
+            echo "::error::Host $host_os/$host_arch does not match target $GOOS/$GOARCH"
+            exit 1
+          fi
+          {
+            printf '### Native smoke environment: %s/%s\n\n' "$GOOS" "$GOARCH"
+            echo '```text'
+            printf 'Runner: %s/%s\n' "$RUNNER_OS" "$RUNNER_ARCH"
+            if [ -n "${ImageOS:-}" ] && [ -n "${ImageVersion:-}" ]; then
+              printf 'Image: %s (%s)\n' "$ImageOS" "$ImageVersion"
+            fi
+            go version
+            case "$GOOS" in
+              windows)
+                powershell.exe -NoProfile -Command '$os = Get-CimInstance Win32_OperatingSystem; $os | Select-Object Caption, Version, BuildNumber | Format-List'
+                ;;
+              linux)
+                cat /etc/os-release
+                uname -smr
+                ;;
+              darwin)
+                sw_vers
+                uname -smr
+                ;;
+            esac
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Build native standalone executable
+        shell: bash
+        env:
+          TRANSMUTEMD_SMOKE_EXECUTABLE: ${{ runner.temp }}/${{ matrix.executable }}
+        run: go build -trimpath -o "$TRANSMUTEMD_SMOKE_EXECUTABLE" ./cmd/transmutemd
+      - name: Verify isolated executable behavior
+        shell: bash
+        env:
+          TRANSMUTEMD_SMOKE_EXECUTABLE: ${{ runner.temp }}/${{ matrix.executable }}
+        run: go test -count=1 -run '^TestExecutableSmoke$' -v ./cmd/transmutemd

@@ -574,6 +574,9 @@ committing output, and its error explains that scanned documents require OCR.
 - **Golden tests:** compare Markdown output for stable fixture PDFs.
 - **Integration tests:** execute the complete CLI with temporary input and
   output paths.
+- **Native executable smoke tests:** execute a CGo-disabled, trimmed-path CLI
+  build on each selected OS/architecture pair with isolated working, home,
+  temporary, and empty tool-search directories.
 - **Corpus tests:** evaluate multi-column text, unusual fonts, ligatures,
   rotation, tables, forms, encryption, malformed files, and image-only pages.
 - **Fuzz tests:** exercise owned PDF-header recognition, physical-to-semantic
@@ -607,6 +610,22 @@ backend's stable name, neutral validated layout, source ownership,
 invalid-document categorization, and pre-cancelled behavior. Backend packages
 supply only representative valid and invalid sources plus expected neutral
 facts.
+
+`cmd/transmutemd` smoke tests build a standalone CLI by default or copy the
+artifact selected by the test-only `TRANSMUTEMD_SMOKE_EXECUTABLE` environment
+variable. Go build metadata must match the native platform and required build
+flags. The suite compares all generated PDF Markdown goldens and diagnostics,
+exercises file and stdout destinations, and checks CLI errors, overwrite
+protection, transactional failure, unchanged inputs, and temporary cleanup.
+Child processes receive only isolated path/home/temp settings plus the
+required Windows system root; they do not inherit development-tool or
+PDF-engine configuration.
+
+Five explicit native GitHub-hosted runner jobs check the host architecture
+before building and record actual OS and runner-image information. These
+fresh runner images and restricted subprocesses provide native standalone
+smoke evidence, not minimum OS guarantees or download trust-policy testing.
+Hosted execution remains pending until those workflows run successfully.
 
 ## 11. Portability and distribution
 
