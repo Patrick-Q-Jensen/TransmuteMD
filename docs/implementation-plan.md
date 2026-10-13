@@ -29,6 +29,10 @@ Architecture Decision Record rather than placing detailed design notes here.
 | Minimum Go version | Go 1.27.1 | Accepted |
 | Project license | MIT | Accepted |
 | Initial operating systems | Windows, Linux, and macOS | Accepted |
+| Initial release targets | Windows amd64; Linux amd64/arm64; macOS amd64/arm64 | Accepted; verification pending |
+| Initial public version | `v0.1.0`, using Semantic Versioning | Accepted |
+| Release publication | On-demand version tags create automated drafts; owner approves publication | Accepted; automation pending |
+| Code signing and notarization | Deferred for the initial release; document unsigned launch limitations | Accepted |
 | Initial CLI | Direct, single-file command defined in `docs/cli-contract.md` | Accepted |
 | Encrypted PDFs | Unsupported initially; return a conversion error without prompting | Accepted |
 | Failed or textless conversion | Do not create or replace output | Accepted |
@@ -36,10 +40,16 @@ Architecture Decision Record rather than placing detailed design notes here.
 | Dependency storage | Go modules without vendoring by default | Accepted |
 | Internal distribution | Self-contained executable plus license and notice files in an archive | Accepted |
 
-## Open decisions
+## Release scope decisions
 
-- [ ] Select the first supported CPU architectures.
-- [ ] Choose a versioning and release strategy.
+- [x] Select the first supported CPU architectures: Windows amd64, Linux
+      amd64/arm64, and macOS amd64/arm64.
+- [x] Choose a versioning and release strategy: `v0.1.0`, Semantic Versioning,
+      and on-demand tagged draft releases with owner-approved publication.
+
+[ADR-0014](decisions/0014-set-initial-release-scope.md) records the target
+matrix, compatibility policy, publication gates, and deferred signing scope.
+These decisions do not imply that release artifacts or automation are ready.
 
 ## Testing strategy
 
@@ -321,16 +331,24 @@ can distinguish meaningful figures and define asset and alt-text behavior.
 **Outcome:** users can download a release artifact and run it without
 installing dependencies.
 
+The initial scope is defined by
+[ADR-0014](decisions/0014-set-initial-release-scope.md). Binary distribution
+remains blocked by the Phase 1 PDFium audit, including for draft releases.
+
 - [ ] Build for every selected operating system and architecture.
-- [ ] Verify each artifact in a clean environment.
+- [ ] Verify each artifact natively in a clean environment, including
+      conversion and transactional output; record tested OS versions and
+      minimum requirements.
 - [ ] Add version information to the CLI.
 - [ ] Generate checksums and a software bill of materials.
 - [ ] Verify license and third-party notice bundles against each final
       artifact.
 - [ ] Add scheduled dependency updates and automated vulnerability scanning
       before public releases.
-- [ ] Automate tagged GitHub releases.
-- [ ] Add installation and upgrade instructions to the README.
+- [ ] Automate tagged draft GitHub releases with owner-approved publication
+      after all distribution gates pass.
+- [ ] Add installation and upgrade instructions to the README, including
+      unsigned-binary trust warnings and launch limitations.
 
 ## Phase 6: Future formats and capabilities
 
@@ -426,3 +444,4 @@ A task is complete when:
 | 2026-09-28 | Preserved adjacent short schemas and split synchronized logical records within tall horizontal bands while retaining fallback for ambiguous spans. |
 | 2026-09-28 | Unfolded synchronized label/value field bands into independent Markdown tables and retained fallback for irregular stamps. |
 | 2026-09-28 | Preserved repeated empty table controls and explicitly labeled ruled blanks while leaving unlabeled signature bands and ambiguous fields unmodeled. |
+| 2026-10-13 | Accepted ADR-0014: selected five initial release targets, `v0.1.0` with Semantic Versioning, and on-demand tagged draft releases with owner approval; deferred signing while retaining the PDFium distribution blocker. |

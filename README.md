@@ -11,9 +11,19 @@ pipeline.
 
 ## Project status
 
-The project is in the vertical-slice implementation phase. See the
-[implementation plan](docs/implementation-plan.md) for current progress and
-planned work.
+The converter, robustness, and document-fidelity work are complete in the
+[implementation plan](docs/implementation-plan.md). The project is preparing
+for its first public release; release builds, target verification, and
+automation remain planned work.
+
+The selected initial release targets are Windows x64, Linux x64/ARM64, and
+macOS Intel/Apple Silicon. The first public version will be `v0.1.0`, using
+Semantic Versioning, with automated draft releases and owner-approved
+publication. Windows signing and macOS signing/notarization are deferred;
+unsigned binaries may encounter platform trust warnings or launch
+restrictions. See [release scope](docs/decisions/0014-set-initial-release-scope.md)
+for the compatibility policy and distribution gates. These targets are not
+yet a claim that release artifacts have been verified.
 
 ## Usage
 

@@ -21,6 +21,7 @@ were made. They complement the current-state description in
 | [0011](0011-unfold-stacked-field-bands.md) | Unfold synchronized label/value field bands | Accepted |
 | [0012](0012-recover-explicit-empty-fields.md) | Recover explicitly evidenced empty fields | Accepted |
 | [0013](0013-recognize-geometric-contents.md) | Recognize geometric contents rows before column ordering | Accepted |
+| [0014](0014-set-initial-release-scope.md) | Set the initial release targets, versioning, and publication process | Accepted |
 
 ## Process
 

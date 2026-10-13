@@ -610,15 +610,27 @@ facts.
 
 ## 11. Portability and distribution
 
-Initial releases target Windows, Linux, and macOS. CPU architectures must be
-selected and verified in the implementation plan. Each target receives one
-executable containing the PDFium WebAssembly module. Build metadata and
-third-party notices should accompany releases where required.
+The initial release scope selects Windows amd64, Linux amd64/arm64, and macOS
+amd64/arm64. Each target receives one executable containing the PDFium
+WebAssembly module, packaged with the required project and third-party legal
+files. Native clean-environment checks must verify conversion and
+transactional output for each pair before shipping; the selected matrix is
+not yet a claim of verified release support.
+
+[ADR-0014](decisions/0014-set-initial-release-scope.md) defines Semantic
+Versioning starting at `v0.1.0` and on-demand, tag-triggered draft GitHub
+Releases with owner-approved publication. Release archives must include
+audited license and notice bundles and be accompanied by checksums and
+artifact-specific SBOMs.
+Windows signing and macOS signing/notarization are deferred initially, with
+unsigned-binary launch limitations documented for users.
 
 Dependency selection, embedded-component auditing, and notice packaging follow
 the [dependency and notice policy](dependency-and-notice-policy.md). The same
 notice bundle is required for internally shared binaries even while formal
-release automation is deferred.
+release automation is deferred. Binary distribution, including through draft
+releases or publicly accessible build artifacts, remains blocked until the
+embedded PDFium audit is complete.
 
 Native PDFium may later be offered as a distinct build or backend. It must not
 become a hidden runtime dependency of the default portable release.
