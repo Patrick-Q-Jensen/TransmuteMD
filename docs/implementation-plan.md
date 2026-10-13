@@ -338,16 +338,18 @@ remains blocked by the Phase 1 PDFium audit, including for draft releases.
 - [x] Build for every selected operating system and architecture: add an
       explicit five-target, CGo-disabled CI cross-build matrix with trimmed
       source paths and non-empty executable/build-metadata checks. All five
-      builds passed locally; GitHub-hosted execution remains pending. No
+      builds passed locally and in GitHub-hosted CI. No
       executables are uploaded, cached, or published.
 - [~] Verify each artifact natively in a clean environment, including
       conversion and transactional output; record tested OS versions and
       minimum requirements. Five native runner jobs and an isolated
       executable smoke suite are implemented. The suite passed locally on
-      Windows 11 Enterprise x64 (10.0.26100, build 26100). GitHub-hosted results
-      and the minimum OS support policy remain pending; runner versions and
-      image metadata are recorded in workflow logs and summaries. Restricted
-      subprocesses do not establish pristine-OS or download trust behavior.
+      Windows 11 Enterprise x64 (10.0.26100, build 26100), and all five native
+      targets passed in GitHub-hosted CI. The minimum OS support policy and
+      checks against final release artifacts remain pending; runner versions
+      and image metadata are recorded in workflow logs and summaries.
+      Restricted subprocesses do not establish pristine-OS or download trust
+      behavior.
 - [ ] Add version information to the CLI.
 - [ ] Generate checksums and a software bill of materials.
 - [ ] Verify license and third-party notice bundles against each final
@@ -358,6 +360,15 @@ remains blocked by the Phase 1 PDFium audit, including for draft releases.
       after all distribution gates pass.
 - [ ] Add installation and upgrade instructions to the README, including
       unsigned-binary trust warnings and launch limitations.
+
+### Hosted verification evidence
+
+[CI run 38442282482](https://github.com/Patrick-Q-Jensen/TransmuteMD/actions/runs/38442282482)
+passed for commit `412ccf7930880288dcee0bc58dd28cac0dcee6fb` on 2026-10-13.
+All 14 jobs succeeded: formatting, three native OS quality jobs, five
+cross-builds, and five native executable smoke jobs. Tested runner environments
+are recorded in the native job logs and summaries. No binaries were uploaded
+or published.
 
 ## Phase 6: Future formats and capabilities
 
@@ -456,3 +467,4 @@ A task is complete when:
 | 2026-10-13 | Accepted ADR-0014: selected five initial release targets, `v0.1.0` with Semantic Versioning, and on-demand tagged draft releases with owner approval; deferred signing while retaining the PDFium distribution blocker. |
 | 2026-10-13 | Added five-target CI cross-build coverage and a manual workflow trigger; verified local binaries and target/CGo/trimpath metadata while leaving hosted execution, native artifact verification, and distribution pending. |
 | 2026-10-13 | Added five matching native runner jobs and isolated standalone CLI smoke tests covering fixture goldens, diagnostics, error codes, and transactional output; verified local Windows 11 execution and left hosted results and minimum OS requirements pending. |
+| 2026-10-13 | Pushed the release-scope, cross-build, and native smoke work to main; GitHub CI run 38442282482 passed all 14 jobs, including native execution on all five targets. Minimum OS requirements and final release-artifact verification remain open. |

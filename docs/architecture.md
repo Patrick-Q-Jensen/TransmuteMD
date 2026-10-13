@@ -625,7 +625,9 @@ Five explicit native GitHub-hosted runner jobs check the host architecture
 before building and record actual OS and runner-image information. These
 fresh runner images and restricted subprocesses provide native standalone
 smoke evidence, not minimum OS guarantees or download trust-policy testing.
-Hosted execution remains pending until those workflows run successfully.
+The first hosted run passed on all five selected targets; the implementation
+plan records that evidence. Exact release-artifact checks and a minimum OS
+support policy remain release work.
 
 ## 11. Portability and distribution
 

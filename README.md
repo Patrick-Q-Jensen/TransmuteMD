@@ -14,8 +14,9 @@ pipeline.
 The converter, robustness, and document-fidelity work are complete in the
 [implementation plan](docs/implementation-plan.md). The project is preparing
 for its first public release. Five-target cross-build and native executable
-smoke coverage is implemented; GitHub-hosted target verification, release
-packaging, and publication automation remain pending.
+smoke coverage is implemented and has passed on GitHub-hosted runners.
+Minimum OS requirements, release packaging, and publication automation remain
+pending.
 
 The selected initial release targets are Windows x64, Linux x64/ARM64, and
 macOS Intel/Apple Silicon. The first public version will be `v0.1.0`, using
@@ -147,8 +148,10 @@ path. The normal `go test ./...` command also includes this suite.
 
 Native jobs record their actual OS versions, architecture, and available
 runner-image metadata in logs and the workflow summary. Configured runners
-are test baselines, not minimum supported OS guarantees. Hosted results and a
-minimum OS support policy remain pending. Fresh GitHub runners include
+are test baselines, not minimum supported OS guarantees. The first hosted run
+passed all five native targets; evidence is linked from the
+[implementation plan](docs/implementation-plan.md). A minimum OS support
+policy remains pending. Fresh GitHub runners include
 development tools; the restricted subprocess environment checks standalone
 conversion but does not emulate a completely pristine OS or downloaded-binary
 SmartScreen/Gatekeeper behavior.
