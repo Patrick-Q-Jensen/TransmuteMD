@@ -350,7 +350,12 @@ remains blocked by the Phase 1 PDFium audit, including for draft releases.
       and image metadata are recorded in workflow logs and summaries.
       Restricted subprocesses do not establish pristine-OS or download trust
       behavior.
-- [ ] Add version information to the CLI.
+- [x] Add version information to the CLI: retain the one-line `--version`
+      contract and `dev` default, embed Git tag labels into cross-build and
+      native CI executables through Go linker flags, and check exact default,
+      development, release, and prerelease output. Runtime version reporting
+      requires neither Git nor PDFium initialization. Hosted validation of
+      this version-wiring change remains pending.
 - [ ] Generate checksums and a software bill of materials.
 - [ ] Verify license and third-party notice bundles against each final
       artifact.
@@ -468,3 +473,4 @@ A task is complete when:
 | 2026-10-13 | Added five-target CI cross-build coverage and a manual workflow trigger; verified local binaries and target/CGo/trimpath metadata while leaving hosted execution, native artifact verification, and distribution pending. |
 | 2026-10-13 | Added five matching native runner jobs and isolated standalone CLI smoke tests covering fixture goldens, diagnostics, error codes, and transactional output; verified local Windows 11 execution and left hosted results and minimum OS requirements pending. |
 | 2026-10-13 | Pushed the release-scope, cross-build, and native smoke work to main; GitHub CI run 38442282482 passed all 14 jobs, including native execution on all five targets. Minimum OS requirements and final release-artifact verification remain open. |
+| 2026-10-13 | Added linker-embedded CLI versions, tag-aware cross/native CI build labels, and exact standalone version checks while preserving the development default and distribution gates. |

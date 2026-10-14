@@ -23,9 +23,10 @@ const (
 	ExitConversion  = 4
 	ExitOutput      = 5
 	ExitInterrupted = 130
-
-	Version = "dev"
 )
+
+// Version is replaced with the release tag through the Go linker's -X flag.
+var Version = "dev"
 
 var (
 	errNilFactory         = errors.New("converter factory must not be nil")

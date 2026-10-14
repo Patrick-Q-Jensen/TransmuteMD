@@ -646,6 +646,14 @@ artifact-specific SBOMs.
 Windows signing and macOS signing/notarization are deferred initially, with
 unsigned-binary launch limitations documented for users.
 
+The CLI's version label defaults to `dev` and is embedded through the Go
+linker's `-X` flag targeting `internal/cli.Version`. Cross-build and native CI
+jobs use the Git tag for tag-ref runs and `dev` otherwise. Native smoke tests
+assert the exact version line against a test-only expected label, and
+standalone version tests cover default, injected development, release, and
+prerelease builds. Version reporting does not query Git or the network,
+initialize PDFium, or add an end-user runtime dependency.
+
 Dependency selection, embedded-component auditing, and notice packaging follow
 the [dependency and notice policy](dependency-and-notice-policy.md). The same
 notice bundle is required for internally shared binaries even while formal

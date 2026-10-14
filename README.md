@@ -33,6 +33,7 @@ yet a claim that release artifacts have been verified.
 transmutemd document.pdf
 transmutemd document.pdf --output document.md
 transmutemd document.pdf --output -
+transmutemd --version
 ```
 
 Without `--output`, TransmuteMD creates `document.md` beside the input. It
@@ -110,6 +111,28 @@ go test -run=^$ -bench=BenchmarkGeneratedPDFConversion -benchmem ./internal/app
 go run ./cmd/transmutemd --help
 ```
 
+### Versioned builds
+
+`transmutemd --version` prints `transmutemd dev` for ordinary Go builds.
+The cross-build and native smoke jobs embed the Git tag for tag-ref runs and
+`dev` for branch and pull-request runs. Release tags use `vX.Y.Z`, with
+Semantic Versioning prerelease suffixes where applicable.
+
+To embed a version locally:
+
+```console
+go build -trimpath -ldflags "-X github.com/Patrick-Q-Jensen/TransmuteMD/internal/cli.Version=v0.1.0" ./cmd/transmutemd
+```
+
+For the standalone CI configuration, also set `CGO_ENABLED=0` in the build
+environment.
+
+The label is stored inside the executable; running `--version` needs neither
+Git nor Go nor PDFium initialization. Embedding `v0.1.0` does not create or
+publish a release, and the existing distribution gates still apply.
+
+### CI and native executable verification
+
 GitHub Actions runs formatting checks and native quality checks (vetting,
 tests, fixture validation, and builds) on Windows, Linux, and macOS. A separate
 Linux-hosted job cross-compiles the CLI for all five selected release targets
@@ -145,6 +168,10 @@ go test -count=1 -run '^TestExecutableSmoke$' -v ./cmd/transmutemd
 By default it builds the CLI; to check an already built executable, set the
 test-only `TRANSMUTEMD_SMOKE_EXECUTABLE` environment variable to its absolute
 path. The normal `go test ./...` command also includes this suite.
+For a versioned executable, also set the test-only
+`TRANSMUTEMD_SMOKE_EXPECTED_VERSION` to its exact label; it defaults to `dev`.
+Native CI jobs check the complete version line against the selected build
+label rather than only checking its shape.
 
 Native jobs record their actual OS versions, architecture, and available
 runner-image metadata in logs and the workflow summary. Configured runners

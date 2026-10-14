@@ -18,10 +18,7 @@ import (
 )
 
 func TestExecutableSmoke(t *testing.T) {
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatalf("resolve repository root: %v", err)
-	}
+	root := smokeRepositoryRoot(t)
 	executable := smokeExecutable(t, root)
 	fixtures := filepath.Join(root, "testdata", "pdf", "generated")
 
@@ -32,10 +29,15 @@ func TestExecutableSmoke(t *testing.T) {
 			t.Fatalf("help streams = %q, %q", stdout, stderr)
 		}
 		stdout, stderr = runSmokeCLI(t, executable, directory, cli.ExitSuccess, "--version")
-		fields := strings.Fields(stdout)
-		if len(fields) != 2 || fields[0] != "transmutemd" ||
-			stdout != strings.Join(fields, " ")+"\n" || stderr != "" {
-			t.Fatalf("version streams = %q, %q", stdout, stderr)
+		version := "dev"
+		if expected, ok := os.LookupEnv("TRANSMUTEMD_SMOKE_EXPECTED_VERSION"); ok {
+			if expected == "" {
+				t.Fatal("TRANSMUTEMD_SMOKE_EXPECTED_VERSION must not be empty")
+			}
+			version = expected
+		}
+		if want := "transmutemd " + version + "\n"; stdout != want || stderr != "" {
+			t.Fatalf("version streams = %q, %q; want %q, empty stderr", stdout, stderr, want)
 		}
 		assertSmokeFiles(t, directory)
 	})
@@ -172,6 +174,64 @@ func TestExecutableSmoke(t *testing.T) {
 	})
 }
 
+func TestExecutableVersions(t *testing.T) {
+	root := smokeRepositoryRoot(t)
+	for _, test := range []struct {
+		name    string
+		version string
+		want    string
+	}{
+		{name: "default-development", want: "dev"},
+		{name: "injected-development", version: "dev", want: "dev"},
+		{name: "release", version: "v0.1.0", want: "v0.1.0"},
+		{name: "prerelease", version: "v0.1.0-rc.1", want: "v0.1.0-rc.1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			executable := filepath.Join(t.TempDir(), "transmutemd")
+			if runtime.GOOS == "windows" {
+				executable += ".exe"
+			}
+			buildSmokeExecutable(t, root, executable, test.version)
+			directory := t.TempDir()
+			stdout, stderr := runSmokeCLI(t, executable, directory, cli.ExitSuccess, "--version")
+			if want := "transmutemd " + test.want + "\n"; stdout != want || stderr != "" {
+				t.Fatalf("version streams = %q, %q; want %q, empty stderr", stdout, stderr, want)
+			}
+			assertSmokeFiles(t, directory)
+		})
+	}
+}
+
+func smokeRepositoryRoot(t *testing.T) string {
+	t.Helper()
+
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatalf("resolve repository root: %v", err)
+	}
+	return root
+}
+
+func buildSmokeExecutable(t *testing.T, root, executable, version string) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+	args := []string{"build", "-trimpath", "-o", executable}
+	if version != "" {
+		args = append(args, "-ldflags", "-X github.com/Patrick-Q-Jensen/TransmuteMD/internal/cli.Version="+version)
+	}
+	args = append(args, ".")
+	command := exec.CommandContext(ctx, "go", args...)
+	command.Dir = filepath.Join(root, "cmd", "transmutemd")
+	command.Env = append(os.Environ(),
+		"CGO_ENABLED=0", "GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("build smoke executable: %v\n%s", err, output)
+	}
+}
+
 func smokeExecutable(t *testing.T, root string) string {
 	t.Helper()
 
@@ -186,16 +246,7 @@ func smokeExecutable(t *testing.T, root string) string {
 		}
 		writeSmokeFile(t, executable, readSmokeFile(t, supplied), 0o755)
 	} else {
-		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-		defer cancel()
-		command := exec.CommandContext(ctx, "go", "build", "-trimpath", "-o", executable, ".")
-		command.Dir = filepath.Join(root, "cmd", "transmutemd")
-		command.Env = append(os.Environ(),
-			"CGO_ENABLED=0", "GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH)
-		output, err := command.CombinedOutput()
-		if err != nil {
-			t.Fatalf("build smoke executable: %v\n%s", err, output)
-		}
+		buildSmokeExecutable(t, root, executable, "")
 	}
 	info, err := buildinfo.ReadFile(executable)
 	if err != nil {

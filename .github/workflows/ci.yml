@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+env:
+  CLI_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
+
 jobs:
   formatting:
     name: Formatting
@@ -99,7 +102,8 @@ jobs:
           output_dir="dist/${GOOS}-${GOARCH}"
           output="${output_dir}/${EXECUTABLE}"
           mkdir -p "$output_dir"
-          go build -trimpath -o "$output" ./cmd/transmutemd
+          ldflags="-X github.com/Patrick-Q-Jensen/TransmuteMD/internal/cli.Version=$CLI_VERSION"
+          go build -trimpath -ldflags "$ldflags" -o "$output" ./cmd/transmutemd
           if [ ! -s "$output" ]; then
             echo "::error::Missing or empty executable: $output"
             exit 1
@@ -189,9 +193,10 @@ jobs:
         shell: bash
         env:
           TRANSMUTEMD_SMOKE_EXECUTABLE: ${{ runner.temp }}/${{ matrix.executable }}
-        run: go build -trimpath -o "$TRANSMUTEMD_SMOKE_EXECUTABLE" ./cmd/transmutemd
+        run: go build -trimpath -ldflags "-X github.com/Patrick-Q-Jensen/TransmuteMD/internal/cli.Version=$CLI_VERSION" -o "$TRANSMUTEMD_SMOKE_EXECUTABLE" ./cmd/transmutemd
       - name: Verify isolated executable behavior
         shell: bash
         env:
           TRANSMUTEMD_SMOKE_EXECUTABLE: ${{ runner.temp }}/${{ matrix.executable }}
+          TRANSMUTEMD_SMOKE_EXPECTED_VERSION: ${{ env.CLI_VERSION }}
         run: go test -count=1 -run '^TestExecutableSmoke$' -v ./cmd/transmutemd

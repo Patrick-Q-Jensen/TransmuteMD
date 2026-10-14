@@ -48,6 +48,22 @@ usage errors.
 `--force` is invalid when output is standard output because there is no file
 to replace.
 
+### Version output
+
+`--version` requires no input and prints exactly one UTF-8, LF-terminated line
+to standard output:
+
+```text
+transmutemd <version>
+```
+
+Ordinary development builds report `transmutemd dev`. Tagged CI builds embed
+their Git tag, for example `transmutemd v0.1.0`; public release tags follow the
+Semantic Versioning policy in ADR-0014. Version information is embedded at
+build time, not read from Git, the network, or an environment variable at
+runtime. The command does not initialize PDFium or create output files and
+returns exit code `0` with no diagnostics when writing succeeds.
+
 ## 5. Input behavior
 
 - Input is one local file path.
